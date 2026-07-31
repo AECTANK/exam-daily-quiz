@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1, viewport-fit=cover"
+  />
+
+  <title>會考每日練習</title>
+
+  <style>
+    :root {
+      --primary: #2563eb;
+      --primary-dark: #1d4ed8;
+      --background: #f3f6fb;
+      --card: #ffffff;
+      --text: #172033;
+      --muted: #667085;
+      --border: #d9e0ea;
+      --selected: #e8f0ff;
+      --danger: #c62828;
+      --success: #198754;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--background);
+      color: var(--text);
+      font-family:
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        "PingFang TC",
+        "Noto Sans TC",
+        "Microsoft JhengHei",
+        sans-serif;
+    }
+
+    .page {
+      width: 100%;
+      max-width: 760px;
+      min-height: 100vh;
+      margin: 0 auto;
+      padding:
+        calc(18px + env(safe-area-inset-top))
+        16px
+        calc(30px + env(safe-area-inset-bottom));
+    }
+
+    .header {
+      margin-bottom: 14px;
+    }
+
+    .header-title {
+      margin: 0;
+      font-size: 24px;
+      font-weight: 800;
+    }
+
+    .header-subtitle {
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .progress-card,
+    .question-card,
+    .message-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      box-shadow: 0 8px 24px rgba(30, 50, 80, 0.08);
+    }
+
+    .progress-card {
+      padding: 14px 16px;
+      margin-bottom: 14px;
+    }
+
+    .progress-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 10px;
+      font-size: 14px;
+    }
+
+    .progress-track {
+      width: 100%;
+      height: 9px;
+      overflow: hidden;
+      background: #e8edf4;
+      border-radius: 999px;
+    }
+
+    .progress-bar {
+      width: 0;
+      height: 100%;
+      background: var(--primary);
+      border-radius: 999px;
+      transition: width 0.25s ease;
+    }
+
+    .question-card {
+      padding: 20px;
+    }
+
+    .question-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 28px;
+      padding: 5px 10px;
+      border-radius: 999px;
+      background: #eef3fb;
+      color: #344054;
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .question-text {
+      margin: 0;
+      white-space: pre-wrap;
+      line-height: 1.75;
+      font-size: 18px;
+      font-weight: 650;
+      overflow-wrap: anywhere;
+    }
+
+    .question-image,
+    .option-image {
+      display: block;
+      width: 100%;
+      height: auto;
+      margin-top: 14px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+    }
+
+    .options {
+      display: grid;
+      gap: 12px;
+      margin-top: 22px;
+    }
+
+    .option {
+      width: 100%;
+      padding: 15px;
+      border: 2px solid var(--border);
+      border-radius: 14px;
+      background: #ffffff;
+      color: var(--text);
+      text-align: left;
+      cursor: pointer;
+      transition:
+        border-color 0.15s ease,
+        background 0.15s ease,
+        transform 0.08s ease;
+    }
+
+    .option:active {
+      transform: scale(0.99);
+    }
+
+    .option.selected {
+      border-color: var(--primary);
+      background: var(--selected);
+    }
+
+    .option-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+    }
+
+    .option-label {
+      display: flex;
+      flex: 0 0 32px;
+      align-items: center;
+      justify-content: center;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: #edf1f7;
+      font-weight: 800;
+    }
+
+    .option.selected .option-label {
+      background: var(--primary);
+      color: #ffffff;
+    }
+
+    .option-text {
+      flex: 1;
+      padding-top: 4px;
+      white-space: pre-wrap;
+      line-height: 1.55;
+      font-size: 16px;
+      overflow-wrap: anywhere;
+    }
+
+    .submit-button {
+      width: 100%;
+      min-height: 52px;
+      margin-top: 22px;
+      border: 0;
+      border-radius: 14px;
+      background: var(--primary);
+      color: #ffffff;
+      font-size: 17px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    .submit-button:hover {
+      background: var(--primary-dark);
+    }
+
+    .submit-button:disabled {
+      background: #a8b3c5;
+      cursor: not-allowed;
+    }
+
+    .message-card {
+      padding: 20px;
+      line-height: 1.65;
+    }
+
+    .loading {
+      color: var(--muted);
+      text-align: center;
+    }
+
+    .error {
+      color: var(--danger);
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    .debug {
+      margin-top: 14px;
+      color: var(--muted);
+      font-size: 12px;
+      text-align: center;
+      overflow-wrap: anywhere;
+    }
+  </style>
+</head>
+
+<body>
+  <main class="page">
+    <header class="header">
+      <h1 class="header-title">會考每日練習</h1>
+      <div class="header-subtitle">每天 15 題，五科各 3 題</div>
+    </header>
+
+    <section id="loadingCard" class="message-card loading">
+      正在載入今天的題目……
+    </section>
+
+    <section id="errorCard" class="message-card error hidden"></section>
+
+    <div id="quizArea" class="hidden">
+      <section class="progress-card">
+        <div class="progress-row">
+          <strong id="progressText">第 1 / 15 題</strong>
+          <span id="subjectText">國文</span>
+        </div>
+
+        <div class="progress-track">
+          <div id="progressBar" class="progress-bar"></div>
+        </div>
+      </section>
+
+      <section class="question-card">
+        <div class="question-meta">
+          <span id="yearBadge" class="badge"></span>
+          <span id="subjectBadge" class="badge"></span>
+          <span id="difficultyBadge" class="badge"></span>
+        </div>
+
+        <p id="questionText" class="question-text"></p>
+
+        <img
+          id="questionImage"
+          class="question-image hidden"
+          alt="題目圖片"
+        />
+
+        <div id="options" class="options"></div>
+
+        <button id="submitButton" class="submit-button" disabled>
+          請先選擇答案
+        </button>
+      </section>
+
+      <div id="debugInfo" class="debug"></div>
+    </div>
+  </main>
+
+  <script>
+    "use strict";
+
+    // ============================================================
+    // Supabase 設定
+    // ============================================================
+
+    const GET_DAILY_TASK_URL =
+      "https://xbitdnrjiqlosfkzegiz.supabase.co/functions/v1/get-daily-task";
+
+    const SUPABASE_PUBLISHABLE_KEY =
+      "sb_publishable_VtPQzTC8Cw-ccxC5bSzIuw_nHVbTO3Q";
+
+    // ============================================================
+    // 頁面狀態
+    // ============================================================
+
+    let dailyTaskData = null;
+    let selectedAnswer = null;
+
+    const loadingCard = document.getElementById("loadingCard");
+    const errorCard = document.getElementById("errorCard");
+    const quizArea = document.getElementById("quizArea");
+
+    const progressText = document.getElementById("progressText");
+    const progressBar = document.getElementById("progressBar");
+    const subjectText = document.getElementById("subjectText");
+
+    const yearBadge = document.getElementById("yearBadge");
+    const subjectBadge = document.getElementById("subjectBadge");
+    const difficultyBadge = document.getElementById("difficultyBadge");
+
+    const questionText = document.getElementById("questionText");
+    const questionImage = document.getElementById("questionImage");
+    const optionsContainer = document.getElementById("options");
+    const submitButton = document.getElementById("submitButton");
+    const debugInfo = document.getElementById("debugInfo");
+
+    // ============================================================
+    // 工具函式
+    // ============================================================
+
+    function showError(message) {
+      loadingCard.classList.add("hidden");
+      quizArea.classList.add("hidden");
+
+      errorCard.textContent = message;
+      errorCard.classList.remove("hidden");
+    }
+
+    function getQueryParams() {
+      const params = new URLSearchParams(window.location.search);
+
+      const dailyTaskId = params.get("daily_task_id");
+      const rawOrder = Number(params.get("order") || "1");
+
+      const order =
+        Number.isInteger(rawOrder) && rawOrder > 0
+          ? rawOrder
+          : 1;
+
+      return {
+        dailyTaskId,
+        order,
+      };
+    }
+
+    function createOptionButton({
+      letter,
+      text,
+      imageUrl,
+    }) {
+      const button = document.createElement("button");
+
+      button.type = "button";
+      button.className = "option";
+      button.dataset.answer = letter;
+
+      const row = document.createElement("div");
+      row.className = "option-row";
+
+      const label = document.createElement("div");
+      label.className = "option-label";
+      label.textContent = letter;
+
+      const content = document.createElement("div");
+      content.className = "option-text";
+      content.textContent = text || "";
+
+      row.appendChild(label);
+      row.appendChild(content);
+      button.appendChild(row);
+
+      if (imageUrl) {
+        const image = document.createElement("img");
+        image.className = "option-image";
+        image.src = imageUrl;
+        image.alt = `${letter} 選項圖片`;
+        image.loading = "lazy";
+        button.appendChild(image);
+      }
+
+      button.addEventListener("click", () => {
+        document
+          .querySelectorAll(".option")
+          .forEach((item) => item.classList.remove("selected"));
+
+        button.classList.add("selected");
+        selectedAnswer = letter;
+
+        submitButton.disabled = false;
+        submitButton.textContent = `送出答案 ${letter}`;
+      });
+
+      return button;
+    }
+
+    // ============================================================
+    // 顯示題目
+    // ============================================================
+
+    function renderQuestion(data) {
+      const question = data.current_question;
+
+      if (!question) {
+        throw new Error("後端沒有回傳 current_question");
+      }
+
+      const currentOrder = Number(data.current_order || 1);
+      const totalQuestions = Number(data.total_questions || 15);
+
+      progressText.textContent =
+        `第 ${currentOrder} / ${totalQuestions} 題`;
+
+      subjectText.textContent =
+        question.subject || question.subject_code || "";
+
+      progressBar.style.width =
+        `${Math.min(100, (currentOrder / totalQuestions) * 100)}%`;
+
+      yearBadge.textContent =
+        question.year ? `${question.year} 年` : "歷屆題";
+
+      subjectBadge.textContent =
+        question.subject || question.subject_code || "會考";
+
+      difficultyBadge.textContent =
+        question.difficulty
+          ? `難度：${question.difficulty}`
+          : "難度：未標示";
+
+      questionText.textContent =
+        question.question || "題目內容缺失";
+
+      if (question.question_image_url) {
+        questionImage.src = question.question_image_url;
+        questionImage.classList.remove("hidden");
+      } else {
+        questionImage.removeAttribute("src");
+        questionImage.classList.add("hidden");
+      }
+
+      const optionDefinitions = [
+        {
+          letter: "A",
+          text: question.option_a,
+          imageUrl: question.option_a_image_url,
+        },
+        {
+          letter: "B",
+          text: question.option_b,
+          imageUrl: question.option_b_image_url,
+        },
+        {
+          letter: "C",
+          text: question.option_c,
+          imageUrl: question.option_c_image_url,
+        },
+        {
+          letter: "D",
+          text: question.option_d,
+          imageUrl: question.option_d_image_url,
+        },
+      ];
+
+      optionsContainer.innerHTML = "";
+
+      optionDefinitions.forEach((option) => {
+        // 文字或圖片至少有一項才顯示
+        if (option.text || option.imageUrl) {
+          optionsContainer.appendChild(
+            createOptionButton(option),
+          );
+        }
+      });
+
+      debugInfo.textContent =
+        `Task：${data.daily_task_id}｜題目：${question.question_id}`;
+
+      loadingCard.classList.add("hidden");
+      errorCard.classList.add("hidden");
+      quizArea.classList.remove("hidden");
+    }
+
+    // ============================================================
+    // 載入每日題目
+    // ============================================================
+
+    async function loadDailyTask() {
+      const { dailyTaskId, order } = getQueryParams();
+
+      if (!dailyTaskId) {
+        showError(
+          "網址缺少 daily_task_id，請回到 LINE 重新點擊「開始今天練習」。",
+        );
+        return;
+      }
+
+      if (
+        !SUPABASE_PUBLISHABLE_KEY ||
+        SUPABASE_PUBLISHABLE_KEY ===
+          "YOUR_SUPABASE_PUBLISHABLE_KEY"
+      ) {
+        showError(
+          "尚未設定 Supabase Publishable Key。",
+        );
+        return;
+      }
+
+      try {
+        const response = await fetch(GET_DAILY_TASK_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "apikey": SUPABASE_PUBLISHABLE_KEY,
+          },
+          body: JSON.stringify({
+            daily_task_id: dailyTaskId,
+            current_order: order,
+          }),
+        });
+
+        const result = await response.json();
+
+        if (!response.ok || result.success !== true) {
+          throw new Error(
+            result.message ||
+              `讀取題目失敗，HTTP ${response.status}`,
+          );
+        }
+
+        dailyTaskData = result;
+        renderQuestion(result);
+      } catch (error) {
+        console.error(error);
+
+        showError(
+          error instanceof Error
+            ? error.message
+            : "載入題目時發生未預期錯誤。",
+        );
+      }
+    }
+
+    // ============================================================
+    // 暫時測試送出按鈕
+    // 下一步改接 submit-daily-answer Edge Function
+    // ============================================================
+
+    submitButton.addEventListener("click", () => {
+      if (!selectedAnswer || !dailyTaskData) {
+        return;
+      }
+
+      alert(
+        `你選擇了 ${selectedAnswer}。\n下一步會接上後端判斷對錯與作答紀錄。`,
+      );
+    });
+
+    loadDailyTask();
+  </script>
+</body>
+</html>
