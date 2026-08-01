@@ -201,6 +201,34 @@
       color: #ffffff;
     }
 
+    .option.correct {
+      border-color: var(--success);
+      background: #eaf8ef;
+    }
+
+    .option.correct .option-label {
+      background: var(--success);
+      color: #ffffff;
+    }
+
+    .option.wrong {
+      border-color: var(--danger);
+      background: #fdecec;
+    }
+
+    .option.wrong .option-label {
+      background: var(--danger);
+      color: #ffffff;
+    }
+
+    .submit-button.answer-correct {
+      background: var(--success);
+    }
+
+    .submit-button.answer-wrong {
+      background: var(--danger);
+    }
+
     .option-text {
       flex: 1;
       padding-top: 4px;
@@ -371,6 +399,7 @@
 
     let dailyTaskData = null;
     let selectedAnswer = null;
+    let answerSubmitted = false;
 
     const loadingCard =
       document.getElementById("loadingCard");
@@ -585,6 +614,10 @@
       }
 
       button.addEventListener("click", () => {
+        if (answerSubmitted) {
+          return;
+        }
+
         document
           .querySelectorAll(".option")
           .forEach((item) => {
@@ -608,6 +641,8 @@
     // ============================================================
 
     function renderQuestion(data) {
+      clearAnswerResult();
+
       const question =
         data.current_question;
 
@@ -901,31 +936,209 @@
     }
 
     // ============================================================
-    // 暫時測試送出按鈕
-    // 下一步接 submit-daily-answer Edge Function
+    // 作答、判斷與下一題
     // ============================================================
+
+    function clearAnswerResult() {
+      answerSubmitted = false;
+      selectedAnswer = null;
+
+      document
+        .querySelectorAll(".option")
+        .forEach((item) => {
+          item.classList.remove(
+            "selected",
+            "correct",
+            "wrong",
+          );
+
+          item.disabled = false;
+        });
+
+      submitButton.classList.remove(
+        "answer-correct",
+        "answer-wrong",
+      );
+
+      submitButton.disabled = true;
+      submitButton.textContent =
+        "請先選擇答案";
+    }
+
+    function markAnswerResult(
+      selected,
+      correct,
+    ) {
+      document
+        .querySelectorAll(".option")
+        .forEach((button) => {
+          const answer =
+            button.dataset.answer;
+
+          button.disabled = true;
+
+          if (answer === correct) {
+            button.classList.add("correct");
+          }
+
+          if (
+            answer === selected &&
+            selected !== correct
+          ) {
+            button.classList.add("wrong");
+          }
+        });
+    }
+
+    async function goToNextQuestion() {
+      const currentOrder =
+        Number(
+          dailyTaskData?.current_order || 1,
+        );
+
+      const totalQuestions =
+        Number(
+          dailyTaskData?.total_questions || 15,
+        );
+
+      if (currentOrder >= totalQuestions) {
+        loadingCard.classList.add("hidden");
+        quizArea.classList.add("hidden");
+
+        errorCard.classList.remove(
+          "error",
+        );
+
+        errorCard.textContent = [
+          "🎉 今天的練習完成！",
+          "",
+          `你已完成 ${totalQuestions} 題。`,
+          "",
+          "下一步會加入成績統計與今日結果。",
+        ].join("\n");
+
+        errorCard.classList.remove("hidden");
+        return;
+      }
+
+      const nextOrder =
+        currentOrder + 1;
+
+      clearAnswerResult();
+
+      await loadDailyTask(
+        dailyTaskData.daily_task_id,
+        nextOrder,
+      );
+    }
 
     submitButton.addEventListener(
       "click",
-      () => {
-        if (
-          !selectedAnswer ||
-          !dailyTaskData
-        ) {
+      async () => {
+        if (!dailyTaskData) {
           return;
         }
 
-        alert(
-          [
-            `你選擇了 ${selectedAnswer}。`,
-            "",
-            "下一步會接上後端判斷對錯與作答紀錄。",
-          ].join("\n"),
+        /*
+         * 第二次按按鈕：
+         * 進入下一題。
+         */
+        if (answerSubmitted) {
+          submitButton.disabled = true;
+          submitButton.textContent =
+            "正在載入下一題……";
+
+          try {
+            await goToNextQuestion();
+          } catch (error) {
+            console.error(
+              "載入下一題失敗：",
+              error,
+            );
+
+            showError(
+              [
+                "載入下一題失敗",
+                "",
+                error instanceof Error
+                  ? error.message
+                  : String(error),
+              ].join("\n"),
+            );
+          }
+
+          return;
+        }
+
+        /*
+         * 第一次按按鈕：
+         * 判斷答案。
+         */
+        if (!selectedAnswer) {
+          return;
+        }
+
+        const currentQuestion =
+          dailyTaskData.current_question;
+
+        const correctAnswer =
+          String(
+            currentQuestion?.answer || "",
+          )
+            .trim()
+            .toUpperCase();
+
+        const submittedAnswer =
+          String(selectedAnswer)
+            .trim()
+            .toUpperCase();
+
+        if (!correctAnswer) {
+          showError(
+            "本題缺少正確答案，無法判斷。",
+          );
+
+          return;
+        }
+
+        answerSubmitted = true;
+
+        markAnswerResult(
+          submittedAnswer,
+          correctAnswer,
         );
+
+        if (
+          submittedAnswer === correctAnswer
+        ) {
+          submitButton.textContent =
+            "✅ 答對了！點擊進入下一題";
+
+          submitButton.classList.remove(
+            "answer-wrong",
+          );
+
+          submitButton.classList.add(
+            "answer-correct",
+          );
+        } else {
+          submitButton.textContent =
+            `❌ 答錯了，正確答案是 ${correctAnswer}｜點擊進入下一題`;
+
+          submitButton.classList.remove(
+            "answer-correct",
+          );
+
+          submitButton.classList.add(
+            "answer-wrong",
+          );
+        }
+
+        submitButton.disabled = false;
       },
     );
 
-    // 等 HTML 完整載入後再啟動 LIFF
+    // 等 HTML 完整載入後再啟動作答頁
     window.addEventListener(
       "DOMContentLoaded",
       initializeApp,
