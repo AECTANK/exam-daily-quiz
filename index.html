@@ -1026,6 +1026,15 @@
       dailyTaskData = result;
       selectedAnswer = null;
 
+      /*
+       * 若今日任務已完成，後端不會再回傳 current_question。
+       * 直接顯示完成頁，避免 renderQuestion() 因找不到題目而報錯。
+       */
+      if (result.task_completed === true) {
+        showCompletedResult(result);
+        return;
+      }
+
       submitButton.disabled = true;
       submitButton.textContent =
         "請先選擇答案";
