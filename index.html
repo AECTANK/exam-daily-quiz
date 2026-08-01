@@ -9,14 +9,7 @@
   />
 
   <title>會考每日練習</title>
-
-  <!-- LINE LIFF SDK -->
-  <script
-    charset="utf-8"
-    src="https://static.line-scdn.net/liff/edge/2/sdk.js"
-  ></script>
-
-  <style>
+<style>
     :root {
       --primary: #2563eb;
       --primary-dark: #1d4ed8;
@@ -362,14 +355,6 @@
 
   <script>
     "use strict";
-
-    // ============================================================
-    // LIFF 設定
-    // ============================================================
-
-    const LIFF_ID =
-      "2010921992-NsV1ImUe";
-
     // ============================================================
     // Supabase 設定
     // ============================================================
@@ -830,33 +815,13 @@
     }
 
     // ============================================================
-    // LIFF 啟動
+    // 作答頁啟動
     // ============================================================
 
     async function initializeApp() {
       try {
         showLoading(
-          "正在初始化 LINE 作答頁……",
-        );
-
-        if (
-          typeof liff === "undefined"
-        ) {
-          throw new Error(
-            "LIFF SDK 載入失敗，請檢查網路後重新開啟。",
-          );
-        }
-
-        /*
-         * 必須先完成 liff.init()，
-         * 再讀取 daily_task_id 與 order。
-         */
-        await liff.init({
-          liffId: LIFF_ID,
-        });
-
-        console.log(
-          "LIFF 初始化完成。",
+          "正在讀取今天的任務……",
         );
 
         console.log(
@@ -865,10 +830,20 @@
         );
 
         console.log(
-          "是否在 LINE Client：",
-          liff.isInClient(),
+          "網址參數：",
+          window.location.search,
         );
 
+        /*
+         * 不執行 liff.init()。
+         * 本頁只需要讀取網址中的 daily_task_id 與 order，
+         * 再呼叫 Supabase Edge Function 取得題目。
+         *
+         * getLiffParameters() 同時支援：
+         * 1. 一般 query string
+         * 2. LINE 轉送的 liff.state
+         * 3. hash 參數
+         */
         const {
           dailyTaskId,
           rawOrder,
@@ -906,7 +881,7 @@
         );
       } catch (error) {
         console.error(
-          "LIFF 啟動失敗：",
+          "作答頁啟動失敗：",
           error,
         );
 
