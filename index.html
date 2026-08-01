@@ -2,12 +2,19 @@
 <html lang="zh-Hant">
 <head>
   <meta charset="UTF-8" />
+
   <meta
     name="viewport"
     content="width=device-width, initial-scale=1, viewport-fit=cover"
   />
 
   <title>會考每日練習</title>
+
+  <!-- LINE LIFF SDK -->
+  <script
+    charset="utf-8"
+    src="https://static.line-scdn.net/liff/edge/2/sdk.js"
+  ></script>
 
   <style>
     :root {
@@ -244,6 +251,8 @@
 
     .error {
       color: var(--danger);
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
     }
 
     .hidden {
@@ -264,35 +273,65 @@
   <main class="page">
     <header class="header">
       <h1 class="header-title">會考每日練習</h1>
-      <div class="header-subtitle">每天 15 題，五科各 3 題</div>
+      <div class="header-subtitle">
+        每天 15 題，五科各 3 題
+      </div>
     </header>
 
-    <section id="loadingCard" class="message-card loading">
+    <section
+      id="loadingCard"
+      class="message-card loading"
+    >
       正在載入今天的題目……
     </section>
 
-    <section id="errorCard" class="message-card error hidden"></section>
+    <section
+      id="errorCard"
+      class="message-card error hidden"
+    ></section>
 
     <div id="quizArea" class="hidden">
       <section class="progress-card">
         <div class="progress-row">
-          <strong id="progressText">第 1 / 15 題</strong>
-          <span id="subjectText">國文</span>
+          <strong id="progressText">
+            第 1 / 15 題
+          </strong>
+
+          <span id="subjectText">
+            國文
+          </span>
         </div>
 
         <div class="progress-track">
-          <div id="progressBar" class="progress-bar"></div>
+          <div
+            id="progressBar"
+            class="progress-bar"
+          ></div>
         </div>
       </section>
 
       <section class="question-card">
         <div class="question-meta">
-          <span id="yearBadge" class="badge"></span>
-          <span id="subjectBadge" class="badge"></span>
-          <span id="difficultyBadge" class="badge"></span>
+          <span
+            id="yearBadge"
+            class="badge"
+          ></span>
+
+          <span
+            id="subjectBadge"
+            class="badge"
+          ></span>
+
+          <span
+            id="difficultyBadge"
+            class="badge"
+          ></span>
         </div>
 
-        <p id="questionText" class="question-text"></p>
+        <p
+          id="questionText"
+          class="question-text"
+        ></p>
 
         <img
           id="questionImage"
@@ -300,19 +339,36 @@
           alt="題目圖片"
         />
 
-        <div id="options" class="options"></div>
+        <div
+          id="options"
+          class="options"
+        ></div>
 
-        <button id="submitButton" class="submit-button" disabled>
+        <button
+          id="submitButton"
+          class="submit-button"
+          disabled
+        >
           請先選擇答案
         </button>
       </section>
 
-      <div id="debugInfo" class="debug"></div>
+      <div
+        id="debugInfo"
+        class="debug"
+      ></div>
     </div>
   </main>
 
   <script>
     "use strict";
+
+    // ============================================================
+    // LIFF 設定
+    // ============================================================
+
+    const LIFF_ID =
+      "2010921992-NsV1ImUe";
 
     // ============================================================
     // Supabase 設定
@@ -331,26 +387,50 @@
     let dailyTaskData = null;
     let selectedAnswer = null;
 
-    const loadingCard = document.getElementById("loadingCard");
-    const errorCard = document.getElementById("errorCard");
-    const quizArea = document.getElementById("quizArea");
+    const loadingCard =
+      document.getElementById("loadingCard");
 
-    const progressText = document.getElementById("progressText");
-    const progressBar = document.getElementById("progressBar");
-    const subjectText = document.getElementById("subjectText");
+    const errorCard =
+      document.getElementById("errorCard");
 
-    const yearBadge = document.getElementById("yearBadge");
-    const subjectBadge = document.getElementById("subjectBadge");
-    const difficultyBadge = document.getElementById("difficultyBadge");
+    const quizArea =
+      document.getElementById("quizArea");
 
-    const questionText = document.getElementById("questionText");
-    const questionImage = document.getElementById("questionImage");
-    const optionsContainer = document.getElementById("options");
-    const submitButton = document.getElementById("submitButton");
-    const debugInfo = document.getElementById("debugInfo");
+    const progressText =
+      document.getElementById("progressText");
+
+    const progressBar =
+      document.getElementById("progressBar");
+
+    const subjectText =
+      document.getElementById("subjectText");
+
+    const yearBadge =
+      document.getElementById("yearBadge");
+
+    const subjectBadge =
+      document.getElementById("subjectBadge");
+
+    const difficultyBadge =
+      document.getElementById("difficultyBadge");
+
+    const questionText =
+      document.getElementById("questionText");
+
+    const questionImage =
+      document.getElementById("questionImage");
+
+    const optionsContainer =
+      document.getElementById("options");
+
+    const submitButton =
+      document.getElementById("submitButton");
+
+    const debugInfo =
+      document.getElementById("debugInfo");
 
     // ============================================================
-    // 工具函式
+    // 畫面工具
     // ============================================================
 
     function showError(message) {
@@ -361,42 +441,145 @@
       errorCard.classList.remove("hidden");
     }
 
-    function getQueryParams() {
-      const params = new URLSearchParams(window.location.search);
+    function showLoading(message) {
+      loadingCard.textContent = message;
+      loadingCard.classList.remove("hidden");
 
-      const dailyTaskId = params.get("daily_task_id");
-      const rawOrder = Number(params.get("order") || "1");
+      errorCard.classList.add("hidden");
+      quizArea.classList.add("hidden");
+    }
 
-      const order =
-        Number.isInteger(rawOrder) && rawOrder > 0
-          ? rawOrder
-          : 1;
+    // ============================================================
+    // LIFF 網址參數
+    // ============================================================
+
+    function getParamsFromSearch(searchString) {
+      const normalizedSearch =
+        searchString.startsWith("?")
+          ? searchString
+          : `?${searchString}`;
+
+      const params =
+        new URLSearchParams(normalizedSearch);
 
       return {
-        dailyTaskId,
-        order,
+        dailyTaskId:
+          params.get("daily_task_id"),
+
+        rawOrder:
+          params.get("order"),
       };
     }
+
+    function getLiffParameters() {
+      /*
+       * 第一來源：
+       * LIFF 初始化完成後的正常網址參數
+       */
+      const directParams =
+        getParamsFromSearch(
+          window.location.search,
+        );
+
+      if (directParams.dailyTaskId) {
+        return directParams;
+      }
+
+      /*
+       * 第二來源：
+       * LINE 有時會把原始參數放在 liff.state 裡。
+       *
+       * liff.state 的內容可能是：
+       * ?daily_task_id=xxx&order=1
+       * 或
+       * daily_task_id=xxx&order=1
+       */
+      const currentSearch =
+        new URLSearchParams(
+          window.location.search,
+        );
+
+      const liffState =
+        currentSearch.get("liff.state");
+
+      if (liffState) {
+        const decodedState =
+          decodeURIComponent(liffState);
+
+        const stateParams =
+          getParamsFromSearch(decodedState);
+
+        if (stateParams.dailyTaskId) {
+          return stateParams;
+        }
+      }
+
+      /*
+       * 第三來源：
+       * 某些 LINE WebView 情況可能將參數放進網址 hash。
+       */
+      const hashText =
+        window.location.hash.replace(/^#/, "");
+
+      if (hashText) {
+        const hashParams =
+          getParamsFromSearch(hashText);
+
+        if (hashParams.dailyTaskId) {
+          return hashParams;
+        }
+      }
+
+      return {
+        dailyTaskId: null,
+        rawOrder: null,
+      };
+    }
+
+    function normalizeOrder(rawOrder) {
+      const parsedOrder =
+        Number(rawOrder || "1");
+
+      if (
+        Number.isInteger(parsedOrder) &&
+        parsedOrder > 0
+      ) {
+        return parsedOrder;
+      }
+
+      return 1;
+    }
+
+    // ============================================================
+    // 選項按鈕
+    // ============================================================
 
     function createOptionButton({
       letter,
       text,
       imageUrl,
     }) {
-      const button = document.createElement("button");
+      const button =
+        document.createElement("button");
 
       button.type = "button";
       button.className = "option";
       button.dataset.answer = letter;
 
-      const row = document.createElement("div");
+      const row =
+        document.createElement("div");
+
       row.className = "option-row";
 
-      const label = document.createElement("div");
+      const label =
+        document.createElement("div");
+
       label.className = "option-label";
       label.textContent = letter;
 
-      const content = document.createElement("div");
+      const content =
+        document.createElement("div");
+
       content.className = "option-text";
       content.textContent = text || "";
 
@@ -405,24 +588,31 @@
       button.appendChild(row);
 
       if (imageUrl) {
-        const image = document.createElement("img");
+        const image =
+          document.createElement("img");
+
         image.className = "option-image";
         image.src = imageUrl;
         image.alt = `${letter} 選項圖片`;
         image.loading = "lazy";
+
         button.appendChild(image);
       }
 
       button.addEventListener("click", () => {
         document
           .querySelectorAll(".option")
-          .forEach((item) => item.classList.remove("selected"));
+          .forEach((item) => {
+            item.classList.remove("selected");
+          });
 
         button.classList.add("selected");
+
         selectedAnswer = letter;
 
         submitButton.disabled = false;
-        submitButton.textContent = `送出答案 ${letter}`;
+        submitButton.textContent =
+          `送出答案 ${letter}`;
       });
 
       return button;
@@ -433,29 +623,44 @@
     // ============================================================
 
     function renderQuestion(data) {
-      const question = data.current_question;
+      const question =
+        data.current_question;
 
       if (!question) {
-        throw new Error("後端沒有回傳 current_question");
+        throw new Error(
+          "後端沒有回傳 current_question。",
+        );
       }
 
-      const currentOrder = Number(data.current_order || 1);
-      const totalQuestions = Number(data.total_questions || 15);
+      const currentOrder =
+        Number(data.current_order || 1);
+
+      const totalQuestions =
+        Number(data.total_questions || 15);
 
       progressText.textContent =
         `第 ${currentOrder} / ${totalQuestions} 題`;
 
       subjectText.textContent =
-        question.subject || question.subject_code || "";
+        question.subject ||
+        question.subject_code ||
+        "";
 
       progressBar.style.width =
-        `${Math.min(100, (currentOrder / totalQuestions) * 100)}%`;
+        `${Math.min(
+          100,
+          (currentOrder / totalQuestions) * 100,
+        )}%`;
 
       yearBadge.textContent =
-        question.year ? `${question.year} 年` : "歷屆題";
+        question.year
+          ? `${question.year} 年`
+          : "歷屆題";
 
       subjectBadge.textContent =
-        question.subject || question.subject_code || "會考";
+        question.subject ||
+        question.subject_code ||
+        "會考";
 
       difficultyBadge.textContent =
         question.difficulty
@@ -463,43 +668,54 @@
           : "難度：未標示";
 
       questionText.textContent =
-        question.question || "題目內容缺失";
+        question.question ||
+        "題目內容缺失";
 
       if (question.question_image_url) {
-        questionImage.src = question.question_image_url;
-        questionImage.classList.remove("hidden");
+        questionImage.src =
+          question.question_image_url;
+
+        questionImage.classList.remove(
+          "hidden",
+        );
       } else {
         questionImage.removeAttribute("src");
-        questionImage.classList.add("hidden");
+
+        questionImage.classList.add(
+          "hidden",
+        );
       }
 
       const optionDefinitions = [
         {
           letter: "A",
           text: question.option_a,
-          imageUrl: question.option_a_image_url,
+          imageUrl:
+            question.option_a_image_url,
         },
         {
           letter: "B",
           text: question.option_b,
-          imageUrl: question.option_b_image_url,
+          imageUrl:
+            question.option_b_image_url,
         },
         {
           letter: "C",
           text: question.option_c,
-          imageUrl: question.option_c_image_url,
+          imageUrl:
+            question.option_c_image_url,
         },
         {
           letter: "D",
           text: question.option_d,
-          imageUrl: question.option_d_image_url,
+          imageUrl:
+            question.option_d_image_url,
         },
       ];
 
       optionsContainer.innerHTML = "";
 
       optionDefinitions.forEach((option) => {
-        // 文字或圖片至少有一項才顯示
         if (option.text || option.imageUrl) {
           optionsContainer.appendChild(
             createOptionButton(option),
@@ -519,131 +735,226 @@
     // 載入每日題目
     // ============================================================
 
-    function formatUnknownError(error) {
-      if (error instanceof Error) {
-        return error.message;
-      }
-
-      if (typeof error === "string") {
-        return error;
-      }
-
-      try {
-        return JSON.stringify(error);
-      } catch {
-        return String(error);
-      }
-    }
-
-    async function parseJsonResponse(response) {
-      const rawText = await response.text();
-
-      if (!rawText) {
-        throw new Error(
-          `後端沒有回傳內容，HTTP ${response.status}`,
-        );
-      }
-
-      try {
-        return JSON.parse(rawText);
-      } catch {
-        throw new Error(
-          `後端回傳的不是有效 JSON，HTTP ${response.status}。` +
-          `
-回傳內容：${rawText.slice(0, 500)}`,
-        );
-      }
-    }
-
-    async function loadDailyTask() {
-      const { dailyTaskId, order } = getQueryParams();
-
-      if (!dailyTaskId) {
-        showError(
-          "網址缺少 daily_task_id，請回到 LINE 重新點擊「開始今天練習」。",
-        );
-        return;
-      }
-
+    async function loadDailyTask(
+      dailyTaskId,
+      order,
+    ) {
       if (
         !SUPABASE_PUBLISHABLE_KEY ||
         SUPABASE_PUBLISHABLE_KEY ===
           "YOUR_SUPABASE_PUBLISHABLE_KEY"
       ) {
-        showError(
+        throw new Error(
           "尚未設定 Supabase Publishable Key。",
         );
-        return;
       }
 
-      try {
-        const response = await fetch(GET_DAILY_TASK_URL, {
+      showLoading(
+        `正在載入第 ${order} 題……`,
+      );
+
+      const response =
+        await fetch(GET_DAILY_TASK_URL, {
           method: "POST",
+
           headers: {
-            "Content-Type": "application/json",
-            "apikey": SUPABASE_PUBLISHABLE_KEY,
+            "Content-Type":
+              "application/json",
+
+            "apikey":
+              SUPABASE_PUBLISHABLE_KEY,
           },
+
           body: JSON.stringify({
-            daily_task_id: dailyTaskId,
-            current_order: order,
+            daily_task_id:
+              dailyTaskId,
+
+            current_order:
+              order,
           }),
         });
 
-        const result = await parseJsonResponse(response);
+      /*
+       * 先讀成文字，再嘗試解析 JSON。
+       * 這樣即使 Edge Function 回傳的不是 JSON，
+       * 也能顯示真正錯誤內容。
+       */
+      const responseText =
+        await response.text();
 
-        if (!response.ok || result.success !== true) {
-          const backendMessage =
-            result?.message ||
-            result?.error ||
-            result?.details ||
-            "後端未提供錯誤說明";
+      let result;
 
+      try {
+        result =
+          JSON.parse(responseText);
+      } catch (parseError) {
+        throw new Error(
+          [
+            "後端回傳的內容不是有效 JSON。",
+            "",
+            `HTTP 狀態：${response.status}`,
+            "",
+            "後端實際回傳：",
+            responseText.slice(0, 1000),
+          ].join("\n"),
+        );
+      }
+
+      if (
+        !response.ok ||
+        result.success !== true
+      ) {
+        const backendMessage =
+          result.message ||
+          result.error ||
+          result.details ||
+          "後端沒有提供錯誤說明";
+
+        throw new Error(
+          [
+            `讀取題目失敗，HTTP ${response.status}`,
+            "",
+            String(backendMessage),
+          ].join("\n"),
+        );
+      }
+
+      dailyTaskData = result;
+      selectedAnswer = null;
+
+      submitButton.disabled = true;
+      submitButton.textContent =
+        "請先選擇答案";
+
+      renderQuestion(result);
+    }
+
+    // ============================================================
+    // LIFF 啟動
+    // ============================================================
+
+    async function initializeApp() {
+      try {
+        showLoading(
+          "正在初始化 LINE 作答頁……",
+        );
+
+        if (
+          typeof liff === "undefined"
+        ) {
           throw new Error(
-            `讀取題目失敗，HTTP ${response.status}。` +
-            `
-${backendMessage}`,
+            "LIFF SDK 載入失敗，請檢查網路後重新開啟。",
           );
         }
 
-        dailyTaskData = result;
-        renderQuestion(result);
-      } catch (error) {
-        console.error("LIFF 載入每日任務失敗：", error);
+        /*
+         * 必須先完成 liff.init()，
+         * 再讀取 daily_task_id 與 order。
+         */
+        await liff.init({
+          liffId: LIFF_ID,
+        });
 
-        const detail = formatUnknownError(error);
+        console.log(
+          "LIFF 初始化完成。",
+        );
+
+        console.log(
+          "目前網址：",
+          window.location.href,
+        );
+
+        console.log(
+          "是否在 LINE Client：",
+          liff.isInClient(),
+        );
+
+        const {
+          dailyTaskId,
+          rawOrder,
+        } = getLiffParameters();
+
+        const order =
+          normalizeOrder(rawOrder);
+
+        console.log(
+          "daily_task_id：",
+          dailyTaskId,
+        );
+
+        console.log(
+          "order：",
+          order,
+        );
+
+        if (!dailyTaskId) {
+          throw new Error(
+            [
+              "網址缺少 daily_task_id。",
+              "",
+              "請回到 LINE，重新點擊最新訊息中的「開始今天練習」。",
+              "",
+              "目前網址：",
+              window.location.href,
+            ].join("\n"),
+          );
+        }
+
+        await loadDailyTask(
+          dailyTaskId,
+          order,
+        );
+      } catch (error) {
+        console.error(
+          "LIFF 啟動失敗：",
+          error,
+        );
+
+        const message =
+          error instanceof Error
+            ? error.message
+            : String(error);
 
         showError(
-          "系統發生問題，請將以下內容截圖：
-
-" + detail,
+          [
+            "系統發生問題",
+            "",
+            message,
+          ].join("\n"),
         );
       }
     }
 
     // ============================================================
     // 暫時測試送出按鈕
-    // 下一步改接 submit-daily-answer Edge Function
+    // 下一步接 submit-daily-answer Edge Function
     // ============================================================
 
-    submitButton.addEventListener("click", () => {
-      if (!selectedAnswer || !dailyTaskData) {
-        return;
-      }
+    submitButton.addEventListener(
+      "click",
+      () => {
+        if (
+          !selectedAnswer ||
+          !dailyTaskData
+        ) {
+          return;
+        }
 
-      alert(
-        `你選擇了 ${selectedAnswer}。\n下一步會接上後端判斷對錯與作答紀錄。`,
-      );
-    });
+        alert(
+          [
+            `你選擇了 ${selectedAnswer}。`,
+            "",
+            "下一步會接上後端判斷對錯與作答紀錄。",
+          ].join("\n"),
+        );
+      },
+    );
 
-    window.addEventListener("error", (event) => {
-      console.error("頁面執行錯誤：", event.error || event.message);
-    });
-
-    window.addEventListener("unhandledrejection", (event) => {
-      console.error("未處理的 Promise 錯誤：", event.reason);
-    });
-
-    loadDailyTask();
+    // 等 HTML 完整載入後再啟動 LIFF
+    window.addEventListener(
+      "DOMContentLoaded",
+      initializeApp,
+    );
   </script>
 </body>
 </html>
