@@ -287,6 +287,96 @@
       text-align: center;
       overflow-wrap: anywhere;
     }
+
+    .completed-card {
+      padding: 26px 20px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      box-shadow: 0 8px 24px rgba(30, 50, 80, 0.08);
+      text-align: center;
+    }
+
+    .completed-icon {
+      margin-bottom: 8px;
+      font-size: 48px;
+    }
+
+    .completed-title {
+      margin: 0 0 22px;
+      font-size: 24px;
+      font-weight: 850;
+    }
+
+    .completed-summary {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .summary-item {
+      display: flex;
+      min-height: 92px;
+      padding: 14px 10px;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      background: #f6f8fc;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+    }
+
+    .summary-item strong {
+      margin-top: 7px;
+      font-size: 28px;
+    }
+
+    .summary-label {
+      color: var(--muted);
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .correct-summary strong {
+      color: var(--success);
+    }
+
+    .wrong-summary strong {
+      color: var(--danger);
+    }
+
+    .completed-note {
+      margin-top: 18px;
+      padding: 14px;
+      background: #eef3fb;
+      border-radius: 12px;
+      color: #475467;
+      line-height: 1.6;
+      font-size: 14px;
+      text-align: left;
+    }
+
+    .return-line-button {
+      width: 100%;
+      min-height: 52px;
+      margin-top: 20px;
+      border: 0;
+      border-radius: 14px;
+      background: var(--primary);
+      color: #ffffff;
+      font-size: 17px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    .return-line-button:hover {
+      background: var(--primary-dark);
+    }
+
+    .return-line-button:active {
+      transform: scale(0.99);
+    }
+
   </style>
 </head>
 
@@ -310,6 +400,56 @@
       id="errorCard"
       class="message-card error hidden"
     ></section>
+
+    <section
+      id="completedCard"
+      class="completed-card hidden"
+    >
+      <div class="completed-icon">🎉</div>
+
+      <h2 class="completed-title">
+        今天的練習完成！
+      </h2>
+
+      <div class="completed-summary">
+        <div class="summary-item">
+          <span class="summary-label">完成題數</span>
+          <strong id="completedQuestionCount">15</strong>
+        </div>
+
+        <div class="summary-item correct-summary">
+          <span class="summary-label">答對題數</span>
+          <strong id="completedCorrectCount">0</strong>
+        </div>
+
+        <div class="summary-item wrong-summary">
+          <span class="summary-label">答錯題數</span>
+          <strong id="completedWrongCount">0</strong>
+        </div>
+
+        <div class="summary-item">
+          <span class="summary-label">真實能力分</span>
+          <strong id="completedScore">0</strong>
+        </div>
+
+        <div class="summary-item">
+          <span class="summary-label">獲得點數</span>
+          <strong id="completedPoints">0</strong>
+        </div>
+      </div>
+
+      <div class="completed-note">
+        今日成績已經保存。錯題之後可以到「我的弱點」重新訂正。
+      </div>
+
+      <button
+        id="returnLineButton"
+        class="return-line-button"
+        type="button"
+      >
+        返回 LINE
+      </button>
+    </section>
 
     <div id="quizArea" class="hidden">
       <section class="progress-card">
@@ -412,6 +552,39 @@
     const errorCard =
       document.getElementById("errorCard");
 
+    const completedCard =
+      document.getElementById("completedCard");
+
+    const completedQuestionCount =
+      document.getElementById(
+        "completedQuestionCount",
+      );
+
+    const completedCorrectCount =
+      document.getElementById(
+        "completedCorrectCount",
+      );
+
+    const completedWrongCount =
+      document.getElementById(
+        "completedWrongCount",
+      );
+
+    const completedScore =
+      document.getElementById(
+        "completedScore",
+      );
+
+    const completedPoints =
+      document.getElementById(
+        "completedPoints",
+      );
+
+    const returnLineButton =
+      document.getElementById(
+        "returnLineButton",
+      );
+
     const quizArea =
       document.getElementById("quizArea");
 
@@ -455,8 +628,10 @@
     function showError(message) {
       loadingCard.classList.add("hidden");
       quizArea.classList.add("hidden");
+      completedCard.classList.add("hidden");
 
       errorCard.textContent = message;
+      errorCard.classList.add("error");
       errorCard.classList.remove("hidden");
     }
 
@@ -465,6 +640,7 @@
       loadingCard.classList.remove("hidden");
 
       errorCard.classList.add("hidden");
+      completedCard.classList.add("hidden");
       quizArea.classList.add("hidden");
     }
 
@@ -755,6 +931,7 @@
 
       loadingCard.classList.add("hidden");
       errorCard.classList.add("hidden");
+      completedCard.classList.add("hidden");
       quizArea.classList.remove("hidden");
     }
 
@@ -1070,21 +1247,27 @@
 
     function showCompletedResult(result) {
       loadingCard.classList.add("hidden");
+      errorCard.classList.add("hidden");
       quizArea.classList.add("hidden");
 
-      errorCard.classList.remove("error");
+      completedQuestionCount.textContent =
+        Number(
+          result.completed_question_count ?? 15,
+        );
 
-      errorCard.textContent = [
-        "🎉 今天的練習完成！",
-        "",
-        `完成題數：${result.completed_question_count || 15}`,
-        `答對題數：${result.correct_count || 0}`,
-        `答錯題數：${result.wrong_count || 0}`,
-        `得分：${result.score || 0}`,
-        `獲得點數：${result.earned_points || 0}`,
-      ].join("\n");
+      completedCorrectCount.textContent =
+        Number(result.correct_count ?? 0);
 
-      errorCard.classList.remove("hidden");
+      completedWrongCount.textContent =
+        Number(result.wrong_count ?? 0);
+
+      completedScore.textContent =
+        Number(result.score ?? 0);
+
+      completedPoints.textContent =
+        Number(result.earned_points ?? 0);
+
+      completedCard.classList.remove("hidden");
     }
 
     async function goToNextQuestion() {
@@ -1276,6 +1459,26 @@
             ].join("\n"),
           );
         }
+      },
+    );
+
+    returnLineButton.addEventListener(
+      "click",
+      () => {
+        /*
+         * 本頁目前不是 LIFF 頁面，
+         * 因此不能可靠使用 liff.closeWindow()。
+         *
+         * 優先返回上一頁；
+         * 沒有上一頁時，嘗試開啟 LINE。
+         */
+        if (window.history.length > 1) {
+          window.history.back();
+          return;
+        }
+
+        window.location.href =
+          "https://line.me/R/";
       },
     );
 
