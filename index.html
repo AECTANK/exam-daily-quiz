@@ -519,6 +519,42 @@
     // 載入每日題目
     // ============================================================
 
+    function formatUnknownError(error) {
+      if (error instanceof Error) {
+        return error.message;
+      }
+
+      if (typeof error === "string") {
+        return error;
+      }
+
+      try {
+        return JSON.stringify(error);
+      } catch {
+        return String(error);
+      }
+    }
+
+    async function parseJsonResponse(response) {
+      const rawText = await response.text();
+
+      if (!rawText) {
+        throw new Error(
+          `後端沒有回傳內容，HTTP ${response.status}`,
+        );
+      }
+
+      try {
+        return JSON.parse(rawText);
+      } catch {
+        throw new Error(
+          `後端回傳的不是有效 JSON，HTTP ${response.status}。` +
+          `
+回傳內容：${rawText.slice(0, 500)}`,
+        );
+      }
+    }
+
     async function loadDailyTask() {
       const { dailyTaskId, order } = getQueryParams();
 
@@ -553,24 +589,33 @@
           }),
         });
 
-        const result = await response.json();
+        const result = await parseJsonResponse(response);
 
         if (!response.ok || result.success !== true) {
+          const backendMessage =
+            result?.message ||
+            result?.error ||
+            result?.details ||
+            "後端未提供錯誤說明";
+
           throw new Error(
-            result.message ||
-              `讀取題目失敗，HTTP ${response.status}`,
+            `讀取題目失敗，HTTP ${response.status}。` +
+            `
+${backendMessage}`,
           );
         }
 
         dailyTaskData = result;
         renderQuestion(result);
       } catch (error) {
-        console.error(error);
+        console.error("LIFF 載入每日任務失敗：", error);
+
+        const detail = formatUnknownError(error);
 
         showError(
-          error instanceof Error
-            ? error.message
-            : "載入題目時發生未預期錯誤。",
+          "系統發生問題，請將以下內容截圖：
+
+" + detail,
         );
       }
     }
@@ -588,6 +633,14 @@
       alert(
         `你選擇了 ${selectedAnswer}。\n下一步會接上後端判斷對錯與作答紀錄。`,
       );
+    });
+
+    window.addEventListener("error", (event) => {
+      console.error("頁面執行錯誤：", event.error || event.message);
+    });
+
+    window.addEventListener("unhandledrejection", (event) => {
+      console.error("未處理的 Promise 錯誤：", event.reason);
     });
 
     loadDailyTask();
