@@ -390,6 +390,9 @@
     const GET_DAILY_TASK_URL =
       "https://xbitdnrjiqlosfkzegiz.supabase.co/functions/v1/get-daily-task";
 
+    const SUBMIT_DAILY_ANSWER_URL =
+      "https://xbitdnrjiqlosfkzegiz.supabase.co/functions/v1/submit-daily-answer";
+
     const SUPABASE_PUBLISHABLE_KEY =
       "sb_publishable_VtPQzTC8Cw-ccxC5bSzIuw_nHVbTO3Q";
 
@@ -400,6 +403,8 @@
     let dailyTaskData = null;
     let selectedAnswer = null;
     let answerSubmitted = false;
+    let questionLoadedAt = 0;
+    let lastSubmitResult = null;
 
     const loadingCard =
       document.getElementById("loadingCard");
@@ -642,6 +647,8 @@
 
     function renderQuestion(data) {
       clearAnswerResult();
+      lastSubmitResult = null;
+      questionLoadedAt = Date.now();
 
       const question =
         data.current_question;
@@ -990,7 +997,102 @@
         });
     }
 
+    async function submitDailyAnswer() {
+      const currentOrder =
+        Number(
+          dailyTaskData?.current_order || 1,
+        );
+
+      const responseTimeMs =
+        questionLoadedAt > 0
+          ? Math.max(0, Date.now() - questionLoadedAt)
+          : 0;
+
+      const response =
+        await fetch(SUBMIT_DAILY_ANSWER_URL, {
+          method: "POST",
+
+          headers: {
+            "Content-Type": "application/json",
+            "apikey": SUPABASE_PUBLISHABLE_KEY,
+            "Authorization":
+              `Bearer ${SUPABASE_PUBLISHABLE_KEY}`,
+          },
+
+          body: JSON.stringify({
+            daily_task_id:
+              dailyTaskData.daily_task_id,
+
+            order:
+              currentOrder,
+
+            selected_answer:
+              selectedAnswer,
+
+            response_time_ms:
+              responseTimeMs,
+          }),
+        });
+
+      const responseText =
+        await response.text();
+
+      let result;
+
+      try {
+        result =
+          JSON.parse(responseText);
+      } catch {
+        throw new Error(
+          [
+            "作答後端回傳的內容不是有效 JSON。",
+            "",
+            `HTTP 狀態：${response.status}`,
+            "",
+            responseText.slice(0, 1000),
+          ].join("\n"),
+        );
+      }
+
+      if (
+        !response.ok ||
+        result.success !== true
+      ) {
+        throw new Error(
+          result.error ||
+          result.message ||
+          `送出答案失敗，HTTP ${response.status}`,
+        );
+      }
+
+      return result;
+    }
+
+    function showCompletedResult(result) {
+      loadingCard.classList.add("hidden");
+      quizArea.classList.add("hidden");
+
+      errorCard.classList.remove("error");
+
+      errorCard.textContent = [
+        "🎉 今天的練習完成！",
+        "",
+        `完成題數：${result.completed_question_count || 15}`,
+        `答對題數：${result.correct_count || 0}`,
+        `答錯題數：${result.wrong_count || 0}`,
+        `得分：${result.score || 0}`,
+        `獲得點數：${result.earned_points || 0}`,
+      ].join("\n");
+
+      errorCard.classList.remove("hidden");
+    }
+
     async function goToNextQuestion() {
+      if (lastSubmitResult?.task_completed) {
+        showCompletedResult(lastSubmitResult);
+        return;
+      }
+
       const currentOrder =
         Number(
           dailyTaskData?.current_order || 1,
@@ -1001,28 +1103,30 @@
           dailyTaskData?.total_questions || 15,
         );
 
-      if (currentOrder >= totalQuestions) {
-        loadingCard.classList.add("hidden");
-        quizArea.classList.add("hidden");
-
-        errorCard.classList.remove(
-          "error",
+      const nextOrder =
+        Number(
+          lastSubmitResult?.next_order ||
+          currentOrder + 1,
         );
 
-        errorCard.textContent = [
-          "🎉 今天的練習完成！",
-          "",
-          `你已完成 ${totalQuestions} 題。`,
-          "",
-          "下一步會加入成績統計與今日結果。",
-        ].join("\n");
-
-        errorCard.classList.remove("hidden");
+      if (
+        currentOrder >= totalQuestions ||
+        nextOrder > totalQuestions
+      ) {
+        showCompletedResult({
+          completed_question_count:
+            totalQuestions,
+          correct_count:
+            lastSubmitResult?.correct_count || 0,
+          wrong_count:
+            lastSubmitResult?.wrong_count || 0,
+          score:
+            lastSubmitResult?.score || 0,
+          earned_points:
+            lastSubmitResult?.earned_points || 0,
+        });
         return;
       }
-
-      const nextOrder =
-        currentOrder + 1;
 
       clearAnswerResult();
 
@@ -1072,69 +1176,106 @@
 
         /*
          * 第一次按按鈕：
-         * 判斷答案。
+         * 呼叫 submit-daily-answer，由後端判題並寫入資料庫。
          */
         if (!selectedAnswer) {
           return;
         }
 
-        const currentQuestion =
-          dailyTaskData.current_question;
+        submitButton.disabled = true;
+        submitButton.textContent =
+          "正在送出答案……";
 
-        const correctAnswer =
-          String(
-            currentQuestion?.answer || "",
-          )
-            .trim()
-            .toUpperCase();
+        document
+          .querySelectorAll(".option")
+          .forEach((button) => {
+            button.disabled = true;
+          });
 
-        const submittedAnswer =
-          String(selectedAnswer)
-            .trim()
-            .toUpperCase();
+        try {
+          const result =
+            await submitDailyAnswer();
 
-        if (!correctAnswer) {
-          showError(
-            "本題缺少正確答案，無法判斷。",
+          lastSubmitResult = result;
+          answerSubmitted = true;
+
+          const submittedAnswer =
+            String(
+              result.selected_answer ||
+              selectedAnswer,
+            )
+              .trim()
+              .toUpperCase();
+
+          const correctAnswer =
+            String(
+              result.correct_answer || "",
+            )
+              .trim()
+              .toUpperCase();
+
+          markAnswerResult(
+            submittedAnswer,
+            correctAnswer,
           );
 
-          return;
-        }
+          if (result.is_correct === true) {
+            submitButton.textContent =
+              result.task_completed
+                ? "✅ 答對了！查看今日結果"
+                : "✅ 答對了！點擊進入下一題";
 
-        answerSubmitted = true;
+            submitButton.classList.remove(
+              "answer-wrong",
+            );
 
-        markAnswerResult(
-          submittedAnswer,
-          correctAnswer,
-        );
+            submitButton.classList.add(
+              "answer-correct",
+            );
+          } else {
+            submitButton.textContent =
+              result.task_completed
+                ? `❌ 答錯了，正確答案是 ${correctAnswer}｜查看今日結果`
+                : `❌ 答錯了，正確答案是 ${correctAnswer}｜點擊進入下一題`;
 
-        if (
-          submittedAnswer === correctAnswer
-        ) {
+            submitButton.classList.remove(
+              "answer-correct",
+            );
+
+            submitButton.classList.add(
+              "answer-wrong",
+            );
+          }
+
+          submitButton.disabled = false;
+        } catch (error) {
+          console.error(
+            "送出答案失敗：",
+            error,
+          );
+
+          answerSubmitted = false;
+
+          document
+            .querySelectorAll(".option")
+            .forEach((button) => {
+              button.disabled = false;
+            });
+
+          submitButton.disabled = false;
           submitButton.textContent =
-            "✅ 答對了！點擊進入下一題";
+            `重新送出答案 ${selectedAnswer}`;
 
-          submitButton.classList.remove(
-            "answer-wrong",
-          );
-
-          submitButton.classList.add(
-            "answer-correct",
-          );
-        } else {
-          submitButton.textContent =
-            `❌ 答錯了，正確答案是 ${correctAnswer}｜點擊進入下一題`;
-
-          submitButton.classList.remove(
-            "answer-correct",
-          );
-
-          submitButton.classList.add(
-            "answer-wrong",
+          alert(
+            [
+              "送出答案失敗",
+              "",
+              error instanceof Error
+                ? error.message
+                : String(error),
+            ].join("\n"),
           );
         }
-
-        submitButton.disabled = false;
       },
     );
 
