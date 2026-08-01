@@ -356,25 +356,85 @@
       text-align: left;
     }
 
-    .return-line-button {
+    .completed-actions {
+      display: grid;
+      gap: 12px;
+      margin-top: 20px;
+    }
+
+    .action-button {
       width: 100%;
       min-height: 52px;
-      margin-top: 20px;
       border: 0;
       border-radius: 14px;
-      background: var(--primary);
-      color: #ffffff;
       font-size: 17px;
       font-weight: 800;
       cursor: pointer;
     }
 
-    .return-line-button:hover {
+    .action-button:active {
+      transform: scale(0.99);
+    }
+
+    .action-primary {
+      background: var(--primary);
+      color: #ffffff;
+    }
+
+    .action-primary:hover {
       background: var(--primary-dark);
     }
 
-    .return-line-button:active {
-      transform: scale(0.99);
+    .action-secondary {
+      background: #e8f0ff;
+      color: var(--primary-dark);
+      border: 1px solid #bfd0ff;
+    }
+
+    .action-neutral {
+      background: #eef1f5;
+      color: #344054;
+      border: 1px solid var(--border);
+    }
+
+    .close-help {
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      background: rgba(0, 0, 0, 0.55);
+    }
+
+    .close-help.hidden {
+      display: none;
+    }
+
+    .close-help-panel {
+      width: 100%;
+      max-width: 420px;
+      padding: 22px;
+      border-radius: 18px;
+      background: #ffffff;
+      box-shadow: 0 16px 48px rgba(0, 0, 0, 0.25);
+      text-align: left;
+    }
+
+    .close-help-panel h3 {
+      margin: 0 0 12px;
+      font-size: 22px;
+    }
+
+    .close-help-panel p {
+      margin: 8px 0;
+      color: #475467;
+      line-height: 1.65;
+    }
+
+    .close-help-panel .action-button {
+      margin-top: 16px;
     }
 
   </style>
@@ -442,13 +502,57 @@
         今日成績已經保存。錯題之後可以到「我的弱點」重新訂正。
       </div>
 
-      <button
-        id="returnLineButton"
-        class="return-line-button"
-        type="button"
+      <div class="completed-actions">
+        <button
+          id="reviewWrongButton"
+          class="action-button action-primary"
+          type="button"
+        >
+          查看今天錯題
+        </button>
+
+        <button
+          id="extraPracticeButton"
+          class="action-button action-secondary"
+          type="button"
+        >
+          AI 推薦再練 5 題
+        </button>
+
+        <button
+          id="closePageButton"
+          class="action-button action-neutral"
+          type="button"
+        >
+          回到 LINE
+        </button>
+      </div>
+
+      <div
+        id="closeHelp"
+        class="close-help hidden"
+        role="dialog"
+        aria-modal="true"
       >
-        返回 LINE
-      </button>
+        <div class="close-help-panel">
+          <h3>請關閉這個頁面</h3>
+          <p>
+            目前作答頁是 GitHub Pages 直連，不是 LIFF，
+            LINE 不允許網頁直接關閉視窗。
+          </p>
+          <p>
+            請點右上角的「×」回到 LINE。
+          </p>
+
+          <button
+            id="closeHelpOkButton"
+            class="action-button action-primary"
+            type="button"
+          >
+            我知道了
+          </button>
+        </div>
+      </div>
     </section>
 
     <div id="quizArea" class="hidden">
@@ -580,9 +684,29 @@
         "completedPoints",
       );
 
-    const returnLineButton =
+    const reviewWrongButton =
       document.getElementById(
-        "returnLineButton",
+        "reviewWrongButton",
+      );
+
+    const extraPracticeButton =
+      document.getElementById(
+        "extraPracticeButton",
+      );
+
+    const closePageButton =
+      document.getElementById(
+        "closePageButton",
+      );
+
+    const closeHelp =
+      document.getElementById(
+        "closeHelp",
+      );
+
+    const closeHelpOkButton =
+      document.getElementById(
+        "closeHelpOkButton",
       );
 
     const quizArea =
@@ -1471,23 +1595,44 @@
       },
     );
 
-    returnLineButton.addEventListener(
+    reviewWrongButton.addEventListener(
+      "click",
+      () => {
+        alert(
+          "「查看今天錯題」會在下一階段接上錯題本流程。\n\n目前先保留按鈕位置，不會修改今日原始成績。",
+        );
+      },
+    );
+
+    extraPracticeButton.addEventListener(
+      "click",
+      () => {
+        alert(
+          "「AI 推薦再練 5 題」會在下一階段建立 extra_practice / generated_practice。\n\n這 5 題不計入今日基礎分。",
+        );
+      },
+    );
+
+    closePageButton.addEventListener(
       "click",
       () => {
         /*
-         * 本頁目前不是 LIFF 頁面，
-         * 因此不能可靠使用 liff.closeWindow()。
-         *
-         * 優先返回上一頁；
-         * 沒有上一頁時，嘗試開啟 LINE。
+         * 目前頁面是 GitHub Pages 直連，不是 LIFF。
+         * LINE WebView 通常不允許一般網頁呼叫 window.close()。
+         * 先嘗試關閉；若失敗，顯示明確操作提示。
          */
-        if (window.history.length > 1) {
-          window.history.back();
-          return;
-        }
+        window.close();
 
-        window.location.href =
-          "https://line.me/R/";
+        window.setTimeout(() => {
+          closeHelp.classList.remove("hidden");
+        }, 250);
+      },
+    );
+
+    closeHelpOkButton.addEventListener(
+      "click",
+      () => {
+        closeHelp.classList.add("hidden");
       },
     );
 
