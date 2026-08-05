@@ -1289,25 +1289,37 @@
 
     function markAnswerResult(
       selected,
-      correct,
+      isCorrect,
     ) {
       document
         .querySelectorAll(".option")
         .forEach((button) => {
           const answer =
-            button.dataset.answer;
+            String(button.dataset.answer || "")
+              .trim()
+              .toUpperCase();
 
           button.disabled = true;
 
-          if (answer === correct) {
-            button.classList.add("correct");
-          }
+          /*
+           * 今日練習只顯示學生自己的作答結果：
+           * - 答對：學生所選選項標綠
+           * - 答錯：學生所選選項標紅
+           *
+           * 不標示正確選項，也不需要前端取得 correct_answer。
+           */
+          if (answer === selected) {
+            button.classList.remove(
+              "selected",
+              "correct",
+              "wrong",
+            );
 
-          if (
-            answer === selected &&
-            selected !== correct
-          ) {
-            button.classList.add("wrong");
+            button.classList.add(
+              isCorrect
+                ? "correct"
+                : "wrong",
+            );
           }
         });
     }
@@ -1528,19 +1540,15 @@
               .trim()
               .toUpperCase();
 
-          const correctAnswer =
-            String(
-              result.correct_answer || "",
-            )
-              .trim()
-              .toUpperCase();
+          const isCorrect =
+            result.is_correct === true;
 
           markAnswerResult(
             submittedAnswer,
-            correctAnswer,
+            isCorrect,
           );
 
-          if (result.is_correct === true) {
+          if (isCorrect) {
             submitButton.textContent =
               result.task_completed
                 ? "✅ 答對了！查看今日結果"
@@ -1556,8 +1564,8 @@
           } else {
             submitButton.textContent =
               result.task_completed
-                ? `❌ 答錯了，正確答案是 ${correctAnswer}｜查看今日結果`
-                : `❌ 答錯了，正確答案是 ${correctAnswer}｜點擊進入下一題`;
+                ? "❌ 答錯了，已加入錯題本｜查看今日結果"
+                : "❌ 答錯了，已加入錯題本｜點擊進入下一題";
 
             submitButton.classList.remove(
               "answer-correct",
