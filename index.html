@@ -739,11 +739,7 @@
         hideHint();
         return;
       }
-
-      hintCard.textContent = text.startsWith("提示")
-        ? text
-        : `提示：${text}`;
-
+      hintCard.textContent = `提示：${text}`;
       hintCard.classList.remove("hidden");
     }
 
@@ -1314,17 +1310,6 @@
           "再檢查題目條件與各選項之間的關係，重新作答一次。";
 
         clearAnswerResult();
-
-        const nextAttemptNo = Math.min(
-          Number(lastSubmitResult?.attempt_no || 1) + 1,
-          3
-        );
-
-        progressText.textContent = `第 ${nextAttemptNo} / 3 次作答`;
-        progressBar.style.width = `${Math.min(100, (nextAttemptNo / 3) * 100)}%`;
-
-        questionLoadedAt = Date.now();
-
         showHint(hint);
         submitButton.textContent = "看完提示後，請重新選擇答案";
         return;
@@ -1398,19 +1383,6 @@
 
         markAnswerResult(submittedAnswer, isCorrect);
 
-        if (
-          currentMode === "wrong_question" &&
-          (
-            result.retry_completed === true ||
-            result.session_completed === true ||
-            result.mastered === true ||
-            result.is_correct === true
-          )
-        ) {
-          showCompletedResult(result);
-          return;
-        }
-
         if (isCorrect) {
           submitButton.textContent = currentMode === "wrong_question"
             ? "✅ 訂正成功！查看結果"
@@ -1453,8 +1425,26 @@
 
     reviewWrongButton.addEventListener("click", () => {
       if (currentMode === "wrong_question") {
+        /*
+         * 錯題重練頁是從 LINE 的錯題本卡片進入。
+         * 優先回到上一頁，讓學生直接回到原本的錯題本畫面，
+         * 不必先關閉頁面、再重新進入錯題本。
+         */
+        if (window.history.length > 1) {
+          window.history.back();
+          return;
+        }
+
+        /*
+         * 若沒有上一頁紀錄，再嘗試關閉視窗；
+         * iOS LINE 內建瀏覽器不允許關閉時，才顯示提示。
+         */
         window.close();
-        window.setTimeout(() => closeHelp.classList.remove("hidden"), 250);
+        window.setTimeout(() => {
+          if (!document.hidden) {
+            closeHelp.classList.remove("hidden");
+          }
+        }, 350);
         return;
       }
 
