@@ -657,6 +657,7 @@
       "sb_publishable_VtPQzTC8Cw-ccxC5bSzIuw_nHVbTO3Q";
 
     const LIFF_ID = "2010921992-NsV1lmUe";
+    const APP_VERSION = "2026-08-06-2005-return-wrong-book";
     let liffReady = false;
 
     // ============================================================
@@ -842,13 +843,7 @@
       return false;
     }
 
-    async function sendMessageAndCloseLiff(messageText) {
-      const text = String(messageText || "").trim();
-
-      if (!text) {
-        throw new Error("缺少要送出的 LINE 訊息內容");
-      }
-
+    async function sendWrongBookMessage() {
       if (
         !liffReady ||
         !window.liff ||
@@ -862,17 +857,17 @@
         throw new Error("目前 LIFF 環境不支援 sendMessages");
       }
 
+      /*
+       * 這裡完全比照 LINE Flex 的 message action：
+       * 由目前使用者在聊天室送出「錯題本」，
+       * 觸發既有 Make Route → get-wrong-question-book。
+       */
       await liff.sendMessages([
         {
           type: "text",
-          text,
+          text: "錯題本",
         },
       ]);
-
-      // 讓 LINE 有短暫時間接收訊息，再關閉 LIFF WebView。
-      window.setTimeout(() => {
-        liff.closeWindow();
-      }, 250);
     }
 
     // ============================================================
@@ -1361,6 +1356,10 @@
       }
 
       completedCard.classList.remove("hidden");
+
+      if (currentMode === "wrong_question") {
+        debugInfo.textContent = `版本：${APP_VERSION}`;
+      }
     }
 
     async function goToNextQuestion() {
@@ -1499,37 +1498,41 @@
     });
 
     reviewWrongButton.addEventListener("click", async () => {
-      if (currentMode === "wrong_question") {
-        reviewWrongButton.disabled = true;
-        reviewWrongButton.textContent = "正在返回錯題本……";
-
-        try {
-          /*
-           * 先代表學生送出「錯題本」文字訊息，
-           * 觸發現有 Make Route → get-wrong-question-book，
-           * 然後關閉 LIFF，回到 LINE 後即可看到最新錯題本 Flex。
-           */
-          await sendMessageAndCloseLiff("錯題本");
-          return;
-        } catch (error) {
-          console.error("返回錯題本失敗：", error);
-
-          reviewWrongButton.disabled = false;
-          reviewWrongButton.textContent = "返回錯題本";
-
-          alert([
-            "返回錯題本失敗",
-            "",
-            error instanceof Error ? error.message : String(error),
-            "",
-            "請確認 LIFF 已啟用 chat_message.write Scope。",
-          ].join("\n"));
-
-          return;
-        }
+      if (currentMode !== "wrong_question") {
+        alert("請回到 LINE，從「我的弱點」進入錯題本。");
+        return;
       }
 
-      alert("請回到 LINE，從「我的弱點」進入錯題本。");
+      reviewWrongButton.disabled = true;
+      reviewWrongButton.textContent = "正在叫出錯題本……";
+
+      try {
+        await sendWrongBookMessage();
+
+        /*
+         * 只有 sendMessages 成功後才會執行到這裡。
+         * 此時聊天室已收到使用者送出的「錯題本」，
+         * 現有 Make Route 會回傳最新錯題本 Flex。
+         */
+        reviewWrongButton.textContent = "錯題本已送出，正在返回……";
+
+        // 短暫讓按鈕狀態可見，再關閉 LIFF。
+        await new Promise((resolve) => window.setTimeout(resolve, 500));
+        liff.closeWindow();
+      } catch (error) {
+        console.error("返回錯題本失敗：", error);
+
+        reviewWrongButton.disabled = false;
+        reviewWrongButton.textContent = "返回錯題本";
+
+        alert([
+          "返回錯題本失敗",
+          "",
+          error instanceof Error ? error.message : String(error),
+          "",
+          "請確認 LIFF Scope 已啟用 chat_message.write。",
+        ].join("\n"));
+      }
     });
 
     extraPracticeButton.addEventListener("click", () => {
