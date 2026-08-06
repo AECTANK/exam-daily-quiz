@@ -9,6 +9,9 @@
   />
 
   <title>會考每日練習</title>
+
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+
 <style>
     :root {
       --primary: #2563eb;
@@ -653,6 +656,9 @@
     const SUPABASE_PUBLISHABLE_KEY =
       "sb_publishable_VtPQzTC8Cw-ccxC5bSzIuw_nHVbTO3Q";
 
+    const LIFF_ID = "2010921992-NsV1lmUe";
+    let liffReady = false;
+
     // ============================================================
     // 頁面狀態
     // ============================================================
@@ -800,6 +806,40 @@
       }
 
       return result;
+    }
+
+    // ============================================================
+    // LIFF 初始化與關閉
+    // ============================================================
+
+    async function initializeLiff() {
+      if (!window.liff) {
+        console.warn("LIFF SDK 尚未載入");
+        return;
+      }
+
+      try {
+        await liff.init({ liffId: LIFF_ID });
+        liffReady = true;
+        console.log("LIFF 初始化完成：", LIFF_ID);
+      } catch (error) {
+        liffReady = false;
+        console.error("LIFF 初始化失敗：", error);
+      }
+    }
+
+    function closeLiffWindow() {
+      if (
+        liffReady &&
+        window.liff &&
+        typeof liff.isInClient === "function" &&
+        liff.isInClient()
+      ) {
+        liff.closeWindow();
+        return true;
+      }
+
+      return false;
     }
 
     // ============================================================
@@ -1087,6 +1127,8 @@
 
     async function initializeApp() {
       try {
+        await initializeLiff();
+
         if (!SUPABASE_PUBLISHABLE_KEY) {
           throw new Error("尚未設定 Supabase Publishable Key。");
         }
@@ -1426,25 +1468,23 @@
     reviewWrongButton.addEventListener("click", () => {
       if (currentMode === "wrong_question") {
         /*
-         * 錯題重練頁是從 LINE 的錯題本卡片進入。
-         * 優先回到上一頁，讓學生直接回到原本的錯題本畫面，
-         * 不必先關閉頁面、再重新進入錯題本。
+         * LIFF 內直接關閉目前 WebView。
+         * 關閉後會回到 LINE 對話中原本的錯題本 Flex Message，
+         * 不需要重新進入「我的弱點」。
          */
-        if (window.history.length > 1) {
-          window.history.back();
+        if (closeLiffWindow()) {
           return;
         }
 
-        /*
-         * 若沒有上一頁紀錄，再嘗試關閉視窗；
-         * iOS LINE 內建瀏覽器不允許關閉時，才顯示提示。
-         */
+        // 非 LIFF 或 LIFF 初始化失敗時才使用備援。
         window.close();
+
         window.setTimeout(() => {
           if (!document.hidden) {
             closeHelp.classList.remove("hidden");
           }
         }, 350);
+
         return;
       }
 
@@ -1456,8 +1496,17 @@
     });
 
     closePageButton.addEventListener("click", () => {
+      if (closeLiffWindow()) {
+        return;
+      }
+
       window.close();
-      window.setTimeout(() => closeHelp.classList.remove("hidden"), 250);
+
+      window.setTimeout(() => {
+        if (!document.hidden) {
+          closeHelp.classList.remove("hidden");
+        }
+      }, 350);
     });
 
     closeHelpOkButton.addEventListener("click", () => {
