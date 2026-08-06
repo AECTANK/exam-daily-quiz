@@ -632,8 +632,9 @@
 
   <script>
     "use strict";
+
     // ============================================================
-    // Supabase 設定
+    // Supabase Edge Function 設定
     // ============================================================
 
     const GET_DAILY_TASK_URL =
@@ -642,6 +643,13 @@
     const SUBMIT_DAILY_ANSWER_URL =
       "https://xbitdnrjiqlosfkzegiz.supabase.co/functions/v1/submit-daily-answer";
 
+    // 錯題重練模式使用的兩支 Edge Function。
+    const GET_WRONG_QUESTION_RETRY_URL =
+      "https://xbitdnrjiqlosfkzegiz.supabase.co/functions/v1/get-wrong-question-retry";
+
+    const SUBMIT_WRONG_QUESTION_ANSWER_URL =
+      "https://xbitdnrjiqlosfkzegiz.supabase.co/functions/v1/submit-wrong-question-answer";
+
     const SUPABASE_PUBLISHABLE_KEY =
       "sb_publishable_VtPQzTC8Cw-ccxC5bSzIuw_nHVbTO3Q";
 
@@ -649,106 +657,54 @@
     // 頁面狀態
     // ============================================================
 
-    let dailyTaskData = null;
+    let currentMode = "daily_task";
+    let currentData = null;
     let selectedAnswer = null;
     let answerSubmitted = false;
     let questionLoadedAt = 0;
     let lastSubmitResult = null;
+    let currentParams = null;
 
-    const loadingCard =
-      document.getElementById("loadingCard");
+    const headerTitle = document.querySelector(".header-title");
+    const headerSubtitle = document.querySelector(".header-subtitle");
+    const completedTitle = document.querySelector(".completed-title");
+    const completedNote = document.querySelector(".completed-note");
 
-    const errorCard =
-      document.getElementById("errorCard");
+    const loadingCard = document.getElementById("loadingCard");
+    const errorCard = document.getElementById("errorCard");
+    const completedCard = document.getElementById("completedCard");
+    const completedQuestionCount = document.getElementById("completedQuestionCount");
+    const completedCorrectCount = document.getElementById("completedCorrectCount");
+    const completedWrongCount = document.getElementById("completedWrongCount");
+    const completedScore = document.getElementById("completedScore");
+    const completedPoints = document.getElementById("completedPoints");
+    const reviewWrongButton = document.getElementById("reviewWrongButton");
+    const extraPracticeButton = document.getElementById("extraPracticeButton");
+    const closePageButton = document.getElementById("closePageButton");
+    const closeHelp = document.getElementById("closeHelp");
+    const closeHelpOkButton = document.getElementById("closeHelpOkButton");
+    const quizArea = document.getElementById("quizArea");
+    const progressText = document.getElementById("progressText");
+    const progressBar = document.getElementById("progressBar");
+    const subjectText = document.getElementById("subjectText");
+    const yearBadge = document.getElementById("yearBadge");
+    const subjectBadge = document.getElementById("subjectBadge");
+    const difficultyBadge = document.getElementById("difficultyBadge");
+    const questionText = document.getElementById("questionText");
+    const questionImage = document.getElementById("questionImage");
+    const optionsContainer = document.getElementById("options");
+    const submitButton = document.getElementById("submitButton");
+    const debugInfo = document.getElementById("debugInfo");
 
-    const completedCard =
-      document.getElementById("completedCard");
-
-    const completedQuestionCount =
-      document.getElementById(
-        "completedQuestionCount",
-      );
-
-    const completedCorrectCount =
-      document.getElementById(
-        "completedCorrectCount",
-      );
-
-    const completedWrongCount =
-      document.getElementById(
-        "completedWrongCount",
-      );
-
-    const completedScore =
-      document.getElementById(
-        "completedScore",
-      );
-
-    const completedPoints =
-      document.getElementById(
-        "completedPoints",
-      );
-
-    const reviewWrongButton =
-      document.getElementById(
-        "reviewWrongButton",
-      );
-
-    const extraPracticeButton =
-      document.getElementById(
-        "extraPracticeButton",
-      );
-
-    const closePageButton =
-      document.getElementById(
-        "closePageButton",
-      );
-
-    const closeHelp =
-      document.getElementById(
-        "closeHelp",
-      );
-
-    const closeHelpOkButton =
-      document.getElementById(
-        "closeHelpOkButton",
-      );
-
-    const quizArea =
-      document.getElementById("quizArea");
-
-    const progressText =
-      document.getElementById("progressText");
-
-    const progressBar =
-      document.getElementById("progressBar");
-
-    const subjectText =
-      document.getElementById("subjectText");
-
-    const yearBadge =
-      document.getElementById("yearBadge");
-
-    const subjectBadge =
-      document.getElementById("subjectBadge");
-
-    const difficultyBadge =
-      document.getElementById("difficultyBadge");
-
-    const questionText =
-      document.getElementById("questionText");
-
-    const questionImage =
-      document.getElementById("questionImage");
-
-    const optionsContainer =
-      document.getElementById("options");
-
-    const submitButton =
-      document.getElementById("submitButton");
-
-    const debugInfo =
-      document.getElementById("debugInfo");
+    const hintCard = document.createElement("div");
+    hintCard.id = "hintCard";
+    hintCard.className = "message-card hidden";
+    hintCard.style.marginTop = "16px";
+    hintCard.style.background = "#fff7ed";
+    hintCard.style.borderColor = "#fed7aa";
+    hintCard.style.color = "#9a3412";
+    hintCard.style.fontWeight = "700";
+    document.querySelector(".question-card").appendChild(hintCard);
 
     // ============================================================
     // 畫面工具
@@ -758,7 +714,6 @@
       loadingCard.classList.add("hidden");
       quizArea.classList.add("hidden");
       completedCard.classList.add("hidden");
-
       errorCard.textContent = message;
       errorCard.classList.add("error");
       errorCard.classList.remove("hidden");
@@ -767,143 +722,162 @@
     function showLoading(message) {
       loadingCard.textContent = message;
       loadingCard.classList.remove("hidden");
-
       errorCard.classList.add("hidden");
       completedCard.classList.add("hidden");
       quizArea.classList.add("hidden");
     }
 
+    function hideHint() {
+      hintCard.textContent = "";
+      hintCard.classList.add("hidden");
+    }
+
+    function showHint(message) {
+      const text = String(message || "").trim();
+      if (!text) {
+        hideHint();
+        return;
+      }
+      hintCard.textContent = `提示：${text}`;
+      hintCard.classList.remove("hidden");
+    }
+
+    function configurePageForMode(mode) {
+      if (mode === "wrong_question") {
+        document.title = "會考錯題重練";
+        headerTitle.textContent = "會考錯題重練";
+        headerSubtitle.textContent = "先自己重作；答錯後才逐步取得提示";
+        completedTitle.textContent = "這題訂正完成！";
+        completedNote.textContent = "本次訂正紀錄已保存，原本的每日練習成績不會被修改。";
+        reviewWrongButton.textContent = "返回錯題本";
+        extraPracticeButton.classList.add("hidden");
+      } else {
+        document.title = "會考每日練習";
+        headerTitle.textContent = "會考每日練習";
+        headerSubtitle.textContent = "每天 15 題，五科各 3 題";
+        completedTitle.textContent = "今天的練習完成！";
+        completedNote.textContent = "今日成績已經保存。錯題之後可以到「我的弱點」重新訂正。";
+        reviewWrongButton.textContent = "查看今天錯題";
+        extraPracticeButton.classList.remove("hidden");
+      }
+    }
+
+    async function fetchJson(url, body, actionName) {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "apikey": SUPABASE_PUBLISHABLE_KEY,
+          "Authorization": `Bearer ${SUPABASE_PUBLISHABLE_KEY}`,
+        },
+        body: JSON.stringify(body),
+      });
+
+      const responseText = await response.text();
+      let result;
+
+      try {
+        result = JSON.parse(responseText);
+      } catch {
+        throw new Error([
+          `${actionName}後端回傳的內容不是有效 JSON。`,
+          "",
+          `HTTP 狀態：${response.status}`,
+          "",
+          responseText.slice(0, 1200),
+        ].join("\n"));
+      }
+
+      if (!response.ok || result.success === false) {
+        throw new Error([
+          `${actionName}失敗，HTTP ${response.status}`,
+          "",
+          String(result.message || result.error || result.details || "後端沒有提供錯誤說明"),
+        ].join("\n"));
+      }
+
+      return result;
+    }
+
     // ============================================================
-    // LIFF 網址參數
+    // 網址參數：同時支援一般 query、liff.state、hash
     // ============================================================
 
     function getParamsFromSearch(searchString) {
-      const normalizedSearch =
-        searchString.startsWith("?")
-          ? searchString
-          : `?${searchString}`;
-
-      const params =
-        new URLSearchParams(normalizedSearch);
+      const normalizedSearch = searchString.startsWith("?")
+        ? searchString
+        : `?${searchString}`;
+      const params = new URLSearchParams(normalizedSearch);
 
       return {
-        dailyTaskId:
-          params.get("daily_task_id"),
-
-        rawOrder:
-          params.get("order"),
+        mode: params.get("mode") || null,
+        dailyTaskId: params.get("daily_task_id"),
+        sessionId: params.get("session_id"),
+        wrongQuestionId: params.get("wrong_question_id"),
+        rawOrder: params.get("order"),
       };
     }
 
+    function hasUsableParams(params) {
+      return Boolean(
+        params.dailyTaskId ||
+        params.sessionId ||
+        params.wrongQuestionId ||
+        params.mode
+      );
+    }
+
     function getLiffParameters() {
-      /*
-       * 第一來源：
-       * LIFF 初始化完成後的正常網址參數
-       */
-      const directParams =
-        getParamsFromSearch(
-          window.location.search,
-        );
+      const directParams = getParamsFromSearch(window.location.search);
+      if (hasUsableParams(directParams)) return directParams;
 
-      if (directParams.dailyTaskId) {
-        return directParams;
-      }
-
-      /*
-       * 第二來源：
-       * LINE 有時會把原始參數放在 liff.state 裡。
-       *
-       * liff.state 的內容可能是：
-       * ?daily_task_id=xxx&order=1
-       * 或
-       * daily_task_id=xxx&order=1
-       */
-      const currentSearch =
-        new URLSearchParams(
-          window.location.search,
-        );
-
-      const liffState =
-        currentSearch.get("liff.state");
-
+      const currentSearch = new URLSearchParams(window.location.search);
+      const liffState = currentSearch.get("liff.state");
       if (liffState) {
-        const decodedState =
-          decodeURIComponent(liffState);
-
-        const stateParams =
-          getParamsFromSearch(decodedState);
-
-        if (stateParams.dailyTaskId) {
-          return stateParams;
-        }
+        const stateParams = getParamsFromSearch(decodeURIComponent(liffState));
+        if (hasUsableParams(stateParams)) return stateParams;
       }
 
-      /*
-       * 第三來源：
-       * 某些 LINE WebView 情況可能將參數放進網址 hash。
-       */
-      const hashText =
-        window.location.hash.replace(/^#/, "");
-
+      const hashText = window.location.hash.replace(/^#/, "");
       if (hashText) {
-        const hashParams =
-          getParamsFromSearch(hashText);
-
-        if (hashParams.dailyTaskId) {
-          return hashParams;
-        }
+        const hashParams = getParamsFromSearch(hashText);
+        if (hasUsableParams(hashParams)) return hashParams;
       }
 
       return {
+        mode: null,
         dailyTaskId: null,
+        sessionId: null,
+        wrongQuestionId: null,
         rawOrder: null,
       };
     }
 
     function normalizeOrder(rawOrder) {
-      const parsedOrder =
-        Number(rawOrder || "1");
-
-      if (
-        Number.isInteger(parsedOrder) &&
-        parsedOrder > 0
-      ) {
-        return parsedOrder;
-      }
-
-      return 1;
+      const parsedOrder = Number(rawOrder || "1");
+      return Number.isInteger(parsedOrder) && parsedOrder > 0
+        ? parsedOrder
+        : 1;
     }
 
     // ============================================================
-    // 選項按鈕
+    // 選項與題目顯示
     // ============================================================
 
-    function createOptionButton({
-      letter,
-      text,
-      imageUrl,
-    }) {
-      const button =
-        document.createElement("button");
-
+    function createOptionButton({ letter, text, imageUrl }) {
+      const button = document.createElement("button");
       button.type = "button";
       button.className = "option";
       button.dataset.answer = letter;
 
-      const row =
-        document.createElement("div");
-
+      const row = document.createElement("div");
       row.className = "option-row";
 
-      const label =
-        document.createElement("div");
-
+      const label = document.createElement("div");
       label.className = "option-label";
       label.textContent = letter;
 
-      const content =
-        document.createElement("div");
-
+      const content = document.createElement("div");
       content.className = "option-text";
       content.textContent = text || "";
 
@@ -912,151 +886,87 @@
       button.appendChild(row);
 
       if (imageUrl) {
-        const image =
-          document.createElement("img");
-
+        const image = document.createElement("img");
         image.className = "option-image";
         image.src = imageUrl;
         image.alt = `${letter} 選項圖片`;
         image.loading = "lazy";
-
         button.appendChild(image);
       }
 
       button.addEventListener("click", () => {
-        if (answerSubmitted) {
-          return;
-        }
+        if (answerSubmitted) return;
 
-        document
-          .querySelectorAll(".option")
-          .forEach((item) => {
-            item.classList.remove("selected");
-          });
+        document.querySelectorAll(".option").forEach((item) => {
+          item.classList.remove("selected");
+        });
 
         button.classList.add("selected");
-
         selectedAnswer = letter;
-
         submitButton.disabled = false;
-        submitButton.textContent =
-          `送出答案 ${letter}`;
+        submitButton.textContent = `送出答案 ${letter}`;
       });
 
       return button;
     }
 
-    // ============================================================
-    // 顯示題目
-    // ============================================================
+    function getQuestionFromResult(data) {
+      return data.current_question || data.question || data.retry_question || null;
+    }
 
     function renderQuestion(data) {
       clearAnswerResult();
       lastSubmitResult = null;
       questionLoadedAt = Date.now();
 
-      const question =
-        data.current_question;
-
+      const question = getQuestionFromResult(data);
       if (!question) {
-        throw new Error(
-          "後端沒有回傳 current_question。",
-        );
+        throw new Error("後端沒有回傳 current_question、question 或 retry_question。");
       }
 
-      const currentOrder =
-        Number(data.current_order || 1);
+      const currentOrder = Number(data.current_order || data.order || 1);
+      const totalQuestions = currentMode === "wrong_question"
+        ? Number(data.total_questions || 1)
+        : Number(data.total_questions || 15);
 
-      const totalQuestions =
-        Number(data.total_questions || 15);
+      progressText.textContent = `第 ${currentOrder} / ${totalQuestions} 題`;
+      subjectText.textContent = question.subject || question.subject_code || "";
+      progressBar.style.width = `${Math.min(100, (currentOrder / totalQuestions) * 100)}%`;
+      yearBadge.textContent = question.year ? `${question.year} 年` : "歷屆題";
+      subjectBadge.textContent = question.subject || question.subject_code || "會考";
+      difficultyBadge.textContent = question.difficulty
+        ? `難度：${question.difficulty}`
+        : "難度：未標示";
+      questionText.textContent = question.question || "題目內容缺失";
 
-      progressText.textContent =
-        `第 ${currentOrder} / ${totalQuestions} 題`;
-
-      subjectText.textContent =
-        question.subject ||
-        question.subject_code ||
-        "";
-
-      progressBar.style.width =
-        `${Math.min(
-          100,
-          (currentOrder / totalQuestions) * 100,
-        )}%`;
-
-      yearBadge.textContent =
-        question.year
-          ? `${question.year} 年`
-          : "歷屆題";
-
-      subjectBadge.textContent =
-        question.subject ||
-        question.subject_code ||
-        "會考";
-
-      difficultyBadge.textContent =
-        question.difficulty
-          ? `難度：${question.difficulty}`
-          : "難度：未標示";
-
-      questionText.textContent =
-        question.question ||
-        "題目內容缺失";
-
-      if (question.question_image_url) {
-        questionImage.src =
-          question.question_image_url;
-
-        questionImage.classList.remove(
-          "hidden",
-        );
+      const qImage = question.question_image_url || question.question_image_file_url;
+      if (qImage) {
+        questionImage.src = qImage;
+        questionImage.classList.remove("hidden");
       } else {
         questionImage.removeAttribute("src");
-
-        questionImage.classList.add(
-          "hidden",
-        );
+        questionImage.classList.add("hidden");
       }
 
       const optionDefinitions = [
-        {
-          letter: "A",
-          text: question.option_a,
-          imageUrl:
-            question.option_a_image_url,
-        },
-        {
-          letter: "B",
-          text: question.option_b,
-          imageUrl:
-            question.option_b_image_url,
-        },
-        {
-          letter: "C",
-          text: question.option_c,
-          imageUrl:
-            question.option_c_image_url,
-        },
-        {
-          letter: "D",
-          text: question.option_d,
-          imageUrl:
-            question.option_d_image_url,
-        },
+        { letter: "A", text: question.option_a, imageUrl: question.option_a_image_url },
+        { letter: "B", text: question.option_b, imageUrl: question.option_b_image_url },
+        { letter: "C", text: question.option_c, imageUrl: question.option_c_image_url },
+        { letter: "D", text: question.option_d, imageUrl: question.option_d_image_url },
       ];
 
       optionsContainer.innerHTML = "";
-
       optionDefinitions.forEach((option) => {
         if (option.text || option.imageUrl) {
-          optionsContainer.appendChild(
-            createOptionButton(option),
-          );
+          optionsContainer.appendChild(createOptionButton(option));
         }
       });
 
-      debugInfo.textContent =
-        `Task：${data.daily_task_id}｜題目：${question.question_id}`;
+      if (currentMode === "wrong_question") {
+        debugInfo.textContent = `Session：${currentParams.sessionId}｜錯題：${currentParams.wrongQuestionId}`;
+      } else {
+        debugInfo.textContent = `Task：${data.daily_task_id}｜題目：${question.question_id || question.id || "—"}`;
+      }
 
       loadingCard.classList.add("hidden");
       errorCard.classList.add("hidden");
@@ -1065,334 +975,185 @@
     }
 
     // ============================================================
-    // 載入每日題目
+    // 載入題目
     // ============================================================
 
-    async function loadDailyTask(
-      dailyTaskId,
-      order,
-    ) {
-      if (
-        !SUPABASE_PUBLISHABLE_KEY ||
-        SUPABASE_PUBLISHABLE_KEY ===
-          "YOUR_SUPABASE_PUBLISHABLE_KEY"
-      ) {
-        throw new Error(
-          "尚未設定 Supabase Publishable Key。",
-        );
-      }
+    async function loadDailyTask(dailyTaskId, order) {
+      showLoading(`正在載入第 ${order} 題……`);
 
-      showLoading(
-        `正在載入第 ${order} 題……`,
+      const result = await fetchJson(
+        GET_DAILY_TASK_URL,
+        { daily_task_id: dailyTaskId, current_order: order },
+        "讀取每日題目",
       );
 
-      const response =
-        await fetch(GET_DAILY_TASK_URL, {
-          method: "POST",
-
-          headers: {
-            "Content-Type":
-              "application/json",
-
-            "apikey":
-              SUPABASE_PUBLISHABLE_KEY,
-          },
-
-          body: JSON.stringify({
-            daily_task_id:
-              dailyTaskId,
-
-            current_order:
-              order,
-          }),
-        });
-
-      /*
-       * 先讀成文字，再嘗試解析 JSON。
-       * 這樣即使 Edge Function 回傳的不是 JSON，
-       * 也能顯示真正錯誤內容。
-       */
-      const responseText =
-        await response.text();
-
-      let result;
-
-      try {
-        result =
-          JSON.parse(responseText);
-      } catch (parseError) {
-        throw new Error(
-          [
-            "後端回傳的內容不是有效 JSON。",
-            "",
-            `HTTP 狀態：${response.status}`,
-            "",
-            "後端實際回傳：",
-            responseText.slice(0, 1000),
-          ].join("\n"),
-        );
-      }
-
-      if (
-        !response.ok ||
-        result.success !== true
-      ) {
-        const backendMessage =
-          result.message ||
-          result.error ||
-          result.details ||
-          "後端沒有提供錯誤說明";
-
-        throw new Error(
-          [
-            `讀取題目失敗，HTTP ${response.status}`,
-            "",
-            String(backendMessage),
-          ].join("\n"),
-        );
-      }
-
-      dailyTaskData = result;
+      currentData = result;
       selectedAnswer = null;
 
-      /*
-       * 若今日任務已完成，後端不會再回傳 current_question。
-       * 直接顯示完成頁，避免 renderQuestion() 因找不到題目而報錯。
-       */
       if (result.task_completed === true) {
         showCompletedResult(result);
         return;
       }
 
-      submitButton.disabled = true;
-      submitButton.textContent =
-        "請先選擇答案";
+      renderQuestion(result);
+    }
+
+    async function loadWrongQuestionRetry(sessionId, wrongQuestionId, order) {
+      showLoading("正在載入錯題重練……");
+
+      const result = await fetchJson(
+        GET_WRONG_QUESTION_RETRY_URL,
+        {
+          session_id: sessionId,
+          wrong_question_id: wrongQuestionId,
+          current_order: order,
+        },
+        "讀取錯題重練",
+      );
+
+      currentData = result;
+      selectedAnswer = null;
+
+      if (
+        result.retry_completed === true ||
+        result.session_completed === true ||
+        result.mastered === true
+      ) {
+        showCompletedResult(result);
+        return;
+      }
 
       renderQuestion(result);
     }
 
     // ============================================================
-    // 作答頁啟動
+    // 啟動頁面
     // ============================================================
 
     async function initializeApp() {
       try {
-        showLoading(
-          "正在讀取今天的任務……",
-        );
-
-        console.log(
-          "目前網址：",
-          window.location.href,
-        );
-
-        console.log(
-          "網址參數：",
-          window.location.search,
-        );
-
-        /*
-         * 不執行 liff.init()。
-         * 本頁只需要讀取網址中的 daily_task_id 與 order，
-         * 再呼叫 Supabase Edge Function 取得題目。
-         *
-         * getLiffParameters() 同時支援：
-         * 1. 一般 query string
-         * 2. LINE 轉送的 liff.state
-         * 3. hash 參數
-         */
-        const {
-          dailyTaskId,
-          rawOrder,
-        } = getLiffParameters();
-
-        const order =
-          normalizeOrder(rawOrder);
-
-        console.log(
-          "daily_task_id：",
-          dailyTaskId,
-        );
-
-        console.log(
-          "order：",
-          order,
-        );
-
-        if (!dailyTaskId) {
-          throw new Error(
-            [
-              "網址缺少 daily_task_id。",
-              "",
-              "請回到 LINE，重新點擊最新訊息中的「開始今天練習」。",
-              "",
-              "目前網址：",
-              window.location.href,
-            ].join("\n"),
-          );
+        if (!SUPABASE_PUBLISHABLE_KEY) {
+          throw new Error("尚未設定 Supabase Publishable Key。");
         }
 
-        await loadDailyTask(
-          dailyTaskId,
-          order,
-        );
-      } catch (error) {
-        console.error(
-          "作答頁啟動失敗：",
-          error,
-        );
+        currentParams = getLiffParameters();
+        currentMode = currentParams.mode === "wrong_question"
+          ? "wrong_question"
+          : "daily_task";
 
-        const message =
-          error instanceof Error
-            ? error.message
-            : String(error);
+        configurePageForMode(currentMode);
 
-        showError(
-          [
-            "系統發生問題",
+        const order = normalizeOrder(currentParams.rawOrder);
+
+        console.log("目前網址：", window.location.href);
+        console.log("解析參數：", currentParams);
+        console.log("目前模式：", currentMode);
+
+        if (currentMode === "wrong_question") {
+          if (!currentParams.sessionId) {
+            throw new Error("錯題重練網址缺少 session_id。");
+          }
+          if (!currentParams.wrongQuestionId) {
+            throw new Error("錯題重練網址缺少 wrong_question_id。");
+          }
+
+          await loadWrongQuestionRetry(
+            currentParams.sessionId,
+            currentParams.wrongQuestionId,
+            order,
+          );
+          return;
+        }
+
+        if (!currentParams.dailyTaskId) {
+          throw new Error([
+            "網址缺少 daily_task_id。",
             "",
-            message,
-          ].join("\n"),
-        );
+            "請回到 LINE，重新點擊最新訊息中的「開始今天練習」。",
+            "",
+            "目前網址：",
+            window.location.href,
+          ].join("\n"));
+        }
+
+        await loadDailyTask(currentParams.dailyTaskId, order);
+      } catch (error) {
+        console.error("作答頁啟動失敗：", error);
+        showError([
+          "系統發生問題",
+          "",
+          error instanceof Error ? error.message : String(error),
+        ].join("\n"));
       }
     }
 
     // ============================================================
-    // 作答、判斷與下一題
+    // 作答與判題
     // ============================================================
 
     function clearAnswerResult() {
       answerSubmitted = false;
       selectedAnswer = null;
+      hideHint();
 
-      document
-        .querySelectorAll(".option")
-        .forEach((item) => {
-          item.classList.remove(
-            "selected",
-            "correct",
-            "wrong",
-          );
+      document.querySelectorAll(".option").forEach((item) => {
+        item.classList.remove("selected", "correct", "wrong");
+        item.disabled = false;
+      });
 
-          item.disabled = false;
-        });
-
-      submitButton.classList.remove(
-        "answer-correct",
-        "answer-wrong",
-      );
-
+      submitButton.classList.remove("answer-correct", "answer-wrong");
       submitButton.disabled = true;
-      submitButton.textContent =
-        "請先選擇答案";
+      submitButton.textContent = "請先選擇答案";
     }
 
-    function markAnswerResult(
-      selected,
-      isCorrect,
-    ) {
-      document
-        .querySelectorAll(".option")
-        .forEach((button) => {
-          const answer =
-            String(button.dataset.answer || "")
-              .trim()
-              .toUpperCase();
+    function markAnswerResult(selected, isCorrect) {
+      document.querySelectorAll(".option").forEach((button) => {
+        const answer = String(button.dataset.answer || "").trim().toUpperCase();
+        button.disabled = true;
 
-          button.disabled = true;
-
-          /*
-           * 今日練習只顯示學生自己的作答結果：
-           * - 答對：學生所選選項標綠
-           * - 答錯：學生所選選項標紅
-           *
-           * 不標示正確選項，也不需要前端取得 correct_answer。
-           */
-          if (answer === selected) {
-            button.classList.remove(
-              "selected",
-              "correct",
-              "wrong",
-            );
-
-            button.classList.add(
-              isCorrect
-                ? "correct"
-                : "wrong",
-            );
-          }
-        });
+        // 不揭露正確選項，只標示學生本次所選答案的對錯。
+        if (answer === selected) {
+          button.classList.remove("selected", "correct", "wrong");
+          button.classList.add(isCorrect ? "correct" : "wrong");
+        }
+      });
     }
 
     async function submitDailyAnswer() {
-      const currentOrder =
-        Number(
-          dailyTaskData?.current_order || 1,
-        );
+      const currentOrder = Number(currentData?.current_order || 1);
+      const responseTimeMs = questionLoadedAt > 0
+        ? Math.max(0, Date.now() - questionLoadedAt)
+        : 0;
 
-      const responseTimeMs =
-        questionLoadedAt > 0
-          ? Math.max(0, Date.now() - questionLoadedAt)
-          : 0;
+      return await fetchJson(
+        SUBMIT_DAILY_ANSWER_URL,
+        {
+          daily_task_id: currentData.daily_task_id,
+          order: currentOrder,
+          selected_answer: selectedAnswer,
+          response_time_ms: responseTimeMs,
+        },
+        "送出每日答案",
+      );
+    }
 
-      const response =
-        await fetch(SUBMIT_DAILY_ANSWER_URL, {
-          method: "POST",
+    async function submitWrongQuestionAnswer() {
+      const currentOrder = Number(currentData?.current_order || currentData?.order || 1);
+      const responseTimeMs = questionLoadedAt > 0
+        ? Math.max(0, Date.now() - questionLoadedAt)
+        : 0;
 
-          headers: {
-            "Content-Type": "application/json",
-            "apikey": SUPABASE_PUBLISHABLE_KEY,
-            "Authorization":
-              `Bearer ${SUPABASE_PUBLISHABLE_KEY}`,
-          },
-
-          body: JSON.stringify({
-            daily_task_id:
-              dailyTaskData.daily_task_id,
-
-            order:
-              currentOrder,
-
-            selected_answer:
-              selectedAnswer,
-
-            response_time_ms:
-              responseTimeMs,
-          }),
-        });
-
-      const responseText =
-        await response.text();
-
-      let result;
-
-      try {
-        result =
-          JSON.parse(responseText);
-      } catch {
-        throw new Error(
-          [
-            "作答後端回傳的內容不是有效 JSON。",
-            "",
-            `HTTP 狀態：${response.status}`,
-            "",
-            responseText.slice(0, 1000),
-          ].join("\n"),
-        );
-      }
-
-      if (
-        !response.ok ||
-        result.success !== true
-      ) {
-        throw new Error(
-          result.error ||
-          result.message ||
-          `送出答案失敗，HTTP ${response.status}`,
-        );
-      }
-
-      return result;
+      return await fetchJson(
+        SUBMIT_WRONG_QUESTION_ANSWER_URL,
+        {
+          session_id: currentParams.sessionId,
+          wrong_question_id: currentParams.wrongQuestionId,
+          order: currentOrder,
+          selected_answer: selectedAnswer,
+          response_time_ms: responseTimeMs,
+        },
+        "送出錯題重練答案",
+      );
     }
 
     function showCompletedResult(result) {
@@ -1400,260 +1161,175 @@
       errorCard.classList.add("hidden");
       quizArea.classList.add("hidden");
 
-      completedQuestionCount.textContent =
-        Number(
-          result.completed_question_count ?? 15,
-        );
-
-      completedCorrectCount.textContent =
-        Number(result.correct_count ?? 0);
-
-      completedWrongCount.textContent =
-        Number(result.wrong_count ?? 0);
-
-      completedScore.textContent =
-        Number(result.score ?? 0);
-
-      completedPoints.textContent =
-        Number(result.earned_points ?? 0);
+      if (currentMode === "wrong_question") {
+        completedQuestionCount.textContent = Number(result.completed_question_count ?? 1);
+        completedCorrectCount.textContent = Number(result.correct_count ?? 1);
+        completedWrongCount.textContent = Number(result.wrong_count ?? 0);
+        completedScore.textContent = Number(result.growth_score ?? result.score ?? 0);
+        completedPoints.textContent = Number(result.earned_points ?? result.correction_points ?? 0);
+      } else {
+        completedQuestionCount.textContent = Number(result.completed_question_count ?? 15);
+        completedCorrectCount.textContent = Number(result.correct_count ?? 0);
+        completedWrongCount.textContent = Number(result.wrong_count ?? 0);
+        completedScore.textContent = Number(result.score ?? 0);
+        completedPoints.textContent = Number(result.earned_points ?? 0);
+      }
 
       completedCard.classList.remove("hidden");
     }
 
     async function goToNextQuestion() {
+      if (currentMode === "wrong_question") {
+        if (
+          lastSubmitResult?.retry_completed === true ||
+          lastSubmitResult?.session_completed === true ||
+          lastSubmitResult?.mastered === true ||
+          lastSubmitResult?.is_correct === true
+        ) {
+          showCompletedResult(lastSubmitResult);
+          return;
+        }
+
+        // 答錯後，後端若回傳提示，先顯示提示，再讓學生重作同一題。
+        const hint =
+          lastSubmitResult?.hint ||
+          lastSubmitResult?.hint_text ||
+          lastSubmitResult?.ai_hint ||
+          "再檢查題目條件與各選項之間的關係，重新作答一次。";
+
+        clearAnswerResult();
+        showHint(hint);
+        submitButton.textContent = "看完提示後，請重新選擇答案";
+        return;
+      }
+
       if (lastSubmitResult?.task_completed) {
         showCompletedResult(lastSubmitResult);
         return;
       }
 
-      const currentOrder =
-        Number(
-          dailyTaskData?.current_order || 1,
-        );
+      const currentOrder = Number(currentData?.current_order || 1);
+      const totalQuestions = Number(currentData?.total_questions || 15);
+      const nextOrder = Number(lastSubmitResult?.next_order || currentOrder + 1);
 
-      const totalQuestions =
-        Number(
-          dailyTaskData?.total_questions || 15,
-        );
-
-      const nextOrder =
-        Number(
-          lastSubmitResult?.next_order ||
-          currentOrder + 1,
-        );
-
-      if (
-        currentOrder >= totalQuestions ||
-        nextOrder > totalQuestions
-      ) {
+      if (currentOrder >= totalQuestions || nextOrder > totalQuestions) {
         showCompletedResult({
-          completed_question_count:
-            totalQuestions,
-          correct_count:
-            lastSubmitResult?.correct_count || 0,
-          wrong_count:
-            lastSubmitResult?.wrong_count || 0,
-          score:
-            lastSubmitResult?.score || 0,
-          earned_points:
-            lastSubmitResult?.earned_points || 0,
+          completed_question_count: totalQuestions,
+          correct_count: lastSubmitResult?.correct_count || 0,
+          wrong_count: lastSubmitResult?.wrong_count || 0,
+          score: lastSubmitResult?.score || 0,
+          earned_points: lastSubmitResult?.earned_points || 0,
         });
         return;
       }
 
       clearAnswerResult();
-
-      await loadDailyTask(
-        dailyTaskData.daily_task_id,
-        nextOrder,
-      );
+      await loadDailyTask(currentData.daily_task_id, nextOrder);
     }
 
-    submitButton.addEventListener(
-      "click",
-      async () => {
-        if (!dailyTaskData) {
-          return;
-        }
+    submitButton.addEventListener("click", async () => {
+      if (!currentData) return;
 
-        /*
-         * 第二次按按鈕：
-         * 進入下一題。
-         */
-        if (answerSubmitted) {
-          submitButton.disabled = true;
-          submitButton.textContent =
-            "正在載入下一題……";
-
-          try {
-            await goToNextQuestion();
-          } catch (error) {
-            console.error(
-              "載入下一題失敗：",
-              error,
-            );
-
-            showError(
-              [
-                "載入下一題失敗",
-                "",
-                error instanceof Error
-                  ? error.message
-                  : String(error),
-              ].join("\n"),
-            );
-          }
-
-          return;
-        }
-
-        /*
-         * 第一次按按鈕：
-         * 呼叫 submit-daily-answer，由後端判題並寫入資料庫。
-         */
-        if (!selectedAnswer) {
-          return;
-        }
-
+      if (answerSubmitted) {
         submitButton.disabled = true;
-        submitButton.textContent =
-          "正在送出答案……";
-
-        document
-          .querySelectorAll(".option")
-          .forEach((button) => {
-            button.disabled = true;
-          });
+        submitButton.textContent = currentMode === "wrong_question"
+          ? "正在處理訂正結果……"
+          : "正在載入下一題……";
 
         try {
-          const result =
-            await submitDailyAnswer();
-
-          lastSubmitResult = result;
-          answerSubmitted = true;
-
-          const submittedAnswer =
-            String(
-              result.selected_answer ||
-              selectedAnswer,
-            )
-              .trim()
-              .toUpperCase();
-
-          const isCorrect =
-            result.is_correct === true;
-
-          markAnswerResult(
-            submittedAnswer,
-            isCorrect,
-          );
-
-          if (isCorrect) {
-            submitButton.textContent =
-              result.task_completed
-                ? "✅ 答對了！查看今日結果"
-                : "✅ 答對了！點擊進入下一題";
-
-            submitButton.classList.remove(
-              "answer-wrong",
-            );
-
-            submitButton.classList.add(
-              "answer-correct",
-            );
-          } else {
-            submitButton.textContent =
-              result.task_completed
-                ? "❌ 答錯了，已加入錯題本｜查看今日結果"
-                : "❌ 答錯了，已加入錯題本｜點擊進入下一題";
-
-            submitButton.classList.remove(
-              "answer-correct",
-            );
-
-            submitButton.classList.add(
-              "answer-wrong",
-            );
-          }
-
-          submitButton.disabled = false;
+          await goToNextQuestion();
         } catch (error) {
-          console.error(
-            "送出答案失敗：",
-            error,
-          );
-
-          answerSubmitted = false;
-
-          document
-            .querySelectorAll(".option")
-            .forEach((button) => {
-              button.disabled = false;
-            });
-
-          submitButton.disabled = false;
-          submitButton.textContent =
-            `重新送出答案 ${selectedAnswer}`;
-
-          alert(
-            [
-              "送出答案失敗",
-              "",
-              error instanceof Error
-                ? error.message
-                : String(error),
-            ].join("\n"),
-          );
+          showError([
+            "處理下一步失敗",
+            "",
+            error instanceof Error ? error.message : String(error),
+          ].join("\n"));
         }
-      },
-    );
+        return;
+      }
 
-    reviewWrongButton.addEventListener(
-      "click",
-      () => {
-        alert(
-          "「查看今天錯題」會在下一階段接上錯題本流程。\n\n目前先保留按鈕位置，不會修改今日原始成績。",
-        );
-      },
-    );
+      if (!selectedAnswer) return;
 
-    extraPracticeButton.addEventListener(
-      "click",
-      () => {
-        alert(
-          "「AI 推薦再練 5 題」會在下一階段建立 extra_practice / generated_practice。\n\n這 5 題不計入今日基礎分。",
-        );
-      },
-    );
+      submitButton.disabled = true;
+      submitButton.textContent = "正在送出答案……";
+      document.querySelectorAll(".option").forEach((button) => {
+        button.disabled = true;
+      });
 
-    closePageButton.addEventListener(
-      "click",
-      () => {
-        /*
-         * 目前頁面是 GitHub Pages 直連，不是 LIFF。
-         * LINE WebView 通常不允許一般網頁呼叫 window.close()。
-         * 先嘗試關閉；若失敗，顯示明確操作提示。
-         */
+      try {
+        const result = currentMode === "wrong_question"
+          ? await submitWrongQuestionAnswer()
+          : await submitDailyAnswer();
+
+        lastSubmitResult = result;
+        answerSubmitted = true;
+
+        const submittedAnswer = String(result.selected_answer || selectedAnswer)
+          .trim()
+          .toUpperCase();
+        const isCorrect = result.is_correct === true;
+
+        markAnswerResult(submittedAnswer, isCorrect);
+
+        if (isCorrect) {
+          submitButton.textContent = currentMode === "wrong_question"
+            ? "✅ 訂正成功！查看結果"
+            : result.task_completed
+              ? "✅ 答對了！查看今日結果"
+              : "✅ 答對了！點擊進入下一題";
+          submitButton.classList.remove("answer-wrong");
+          submitButton.classList.add("answer-correct");
+        } else {
+          submitButton.textContent = currentMode === "wrong_question"
+            ? "❌ 還不正確｜點擊查看提示後重作"
+            : result.task_completed
+              ? "❌ 答錯了，已加入錯題本｜查看今日結果"
+              : "❌ 答錯了，已加入錯題本｜點擊進入下一題";
+          submitButton.classList.remove("answer-correct");
+          submitButton.classList.add("answer-wrong");
+        }
+
+        submitButton.disabled = false;
+      } catch (error) {
+        answerSubmitted = false;
+        document.querySelectorAll(".option").forEach((button) => {
+          button.disabled = false;
+        });
+        submitButton.disabled = false;
+        submitButton.textContent = `重新送出答案 ${selectedAnswer}`;
+
+        alert([
+          "送出答案失敗",
+          "",
+          error instanceof Error ? error.message : String(error),
+        ].join("\n"));
+      }
+    });
+
+    reviewWrongButton.addEventListener("click", () => {
+      if (currentMode === "wrong_question") {
         window.close();
+        window.setTimeout(() => closeHelp.classList.remove("hidden"), 250);
+        return;
+      }
 
-        window.setTimeout(() => {
-          closeHelp.classList.remove("hidden");
-        }, 250);
-      },
-    );
+      alert("請回到 LINE，從「我的弱點」進入錯題本。");
+    });
 
-    closeHelpOkButton.addEventListener(
-      "click",
-      () => {
-        closeHelp.classList.add("hidden");
-      },
-    );
+    extraPracticeButton.addEventListener("click", () => {
+      alert("「AI 推薦再練 5 題」將在下一階段接上 generated_practice，且不計入今日基礎分。");
+    });
 
-    // 等 HTML 完整載入後再啟動作答頁
-    window.addEventListener(
-      "DOMContentLoaded",
-      initializeApp,
-    );
+    closePageButton.addEventListener("click", () => {
+      window.close();
+      window.setTimeout(() => closeHelp.classList.remove("hidden"), 250);
+    });
+
+    closeHelpOkButton.addEventListener("click", () => {
+      closeHelp.classList.add("hidden");
+    });
+
+    window.addEventListener("DOMContentLoaded", initializeApp);
   </script>
 </body>
 </html>
