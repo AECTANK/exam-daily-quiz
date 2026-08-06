@@ -842,6 +842,39 @@
       return false;
     }
 
+    async function sendMessageAndCloseLiff(messageText) {
+      const text = String(messageText || "").trim();
+
+      if (!text) {
+        throw new Error("缺少要送出的 LINE 訊息內容");
+      }
+
+      if (
+        !liffReady ||
+        !window.liff ||
+        typeof liff.isInClient !== "function" ||
+        !liff.isInClient()
+      ) {
+        throw new Error("目前頁面不是從 LINE LIFF 開啟");
+      }
+
+      if (typeof liff.sendMessages !== "function") {
+        throw new Error("目前 LIFF 環境不支援 sendMessages");
+      }
+
+      await liff.sendMessages([
+        {
+          type: "text",
+          text,
+        },
+      ]);
+
+      // 讓 LINE 有短暫時間接收訊息，再關閉 LIFF WebView。
+      window.setTimeout(() => {
+        liff.closeWindow();
+      }, 250);
+    }
+
     // ============================================================
     // 網址參數：同時支援一般 query、liff.state、hash
     // ============================================================
@@ -1465,27 +1498,35 @@
       }
     });
 
-    reviewWrongButton.addEventListener("click", () => {
+    reviewWrongButton.addEventListener("click", async () => {
       if (currentMode === "wrong_question") {
-        /*
-         * LIFF 內直接關閉目前 WebView。
-         * 關閉後會回到 LINE 對話中原本的錯題本 Flex Message，
-         * 不需要重新進入「我的弱點」。
-         */
-        if (closeLiffWindow()) {
+        reviewWrongButton.disabled = true;
+        reviewWrongButton.textContent = "正在返回錯題本……";
+
+        try {
+          /*
+           * 先代表學生送出「錯題本」文字訊息，
+           * 觸發現有 Make Route → get-wrong-question-book，
+           * 然後關閉 LIFF，回到 LINE 後即可看到最新錯題本 Flex。
+           */
+          await sendMessageAndCloseLiff("錯題本");
+          return;
+        } catch (error) {
+          console.error("返回錯題本失敗：", error);
+
+          reviewWrongButton.disabled = false;
+          reviewWrongButton.textContent = "返回錯題本";
+
+          alert([
+            "返回錯題本失敗",
+            "",
+            error instanceof Error ? error.message : String(error),
+            "",
+            "請確認 LIFF 已啟用 chat_message.write Scope。",
+          ].join("\n"));
+
           return;
         }
-
-        // 非 LIFF 或 LIFF 初始化失敗時才使用備援。
-        window.close();
-
-        window.setTimeout(() => {
-          if (!document.hidden) {
-            closeHelp.classList.remove("hidden");
-          }
-        }, 350);
-
-        return;
       }
 
       alert("請回到 LINE，從「我的弱點」進入錯題本。");
