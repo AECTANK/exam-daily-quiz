@@ -498,7 +498,7 @@
         </div>
 
         <div class="summary-item">
-          <span class="summary-label">真實能力分</span>
+          <span id="completedScoreLabel" class="summary-label">真實能力分</span>
           <strong id="completedScore">0</strong>
         </div>
 
@@ -677,6 +677,7 @@
     const completedCorrectCount = document.getElementById("completedCorrectCount");
     const completedWrongCount = document.getElementById("completedWrongCount");
     const completedScore = document.getElementById("completedScore");
+    const completedScoreLabel = document.getElementById("completedScoreLabel");
     const completedPoints = document.getElementById("completedPoints");
     const reviewWrongButton = document.getElementById("reviewWrongButton");
     const extraPracticeButton = document.getElementById("extraPracticeButton");
@@ -749,6 +750,7 @@
         headerSubtitle.textContent = "先自己重作；答錯後才逐步取得提示";
         completedTitle.textContent = "這題訂正完成！";
         completedNote.textContent = "本次訂正紀錄已保存，原本的每日練習成績不會被修改。";
+        completedScoreLabel.textContent = "訂正積分";
         reviewWrongButton.textContent = "返回錯題本";
         extraPracticeButton.classList.add("hidden");
       } else {
@@ -757,6 +759,7 @@
         headerSubtitle.textContent = "每天 15 題，五科各 3 題";
         completedTitle.textContent = "今天的練習完成！";
         completedNote.textContent = "今日成績已經保存。錯題之後可以到「我的弱點」重新訂正。";
+        completedScoreLabel.textContent = "真實能力分";
         reviewWrongButton.textContent = "查看今天錯題";
         extraPracticeButton.classList.remove("hidden");
       }
@@ -1162,11 +1165,28 @@
       quizArea.classList.add("hidden");
 
       if (currentMode === "wrong_question") {
-        completedQuestionCount.textContent = Number(result.completed_question_count ?? 1);
-        completedCorrectCount.textContent = Number(result.correct_count ?? 1);
-        completedWrongCount.textContent = Number(result.wrong_count ?? 0);
-        completedScore.textContent = Number(result.growth_score ?? result.score ?? 0);
-        completedPoints.textContent = Number(result.earned_points ?? result.correction_points ?? 0);
+        const isCorrect = result.is_correct === true;
+        const correctionPoints = Number(
+          result.points_earned ??
+          result.correction_points ??
+          result.earned_points ??
+          0
+        );
+
+        completedQuestionCount.textContent = Number(
+          result.completed_question_count ?? 1
+        );
+        completedCorrectCount.textContent = Number(
+          result.correct_count ?? (isCorrect ? 1 : 0)
+        );
+        completedWrongCount.textContent = Number(
+          result.wrong_count ?? (isCorrect ? 0 : 1)
+        );
+
+        // 錯題重練不修改每日練習的真實能力分。
+        // 此格改顯示本次訂正積分，並與獲得點數保持一致。
+        completedScore.textContent = correctionPoints;
+        completedPoints.textContent = correctionPoints;
       } else {
         completedQuestionCount.textContent = Number(result.completed_question_count ?? 15);
         completedCorrectCount.textContent = Number(result.correct_count ?? 0);
