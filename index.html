@@ -917,6 +917,37 @@
       return data.current_question || data.question || data.retry_question || null;
     }
 
+    function buildRestoredHint(data) {
+      const question = getQuestionFromResult(data) || {};
+      const hintLevel = Number(data?.rules?.hint_level || 0);
+
+      if (hintLevel <= 0) {
+        return "";
+      }
+
+      if (hintLevel === 1) {
+        return (
+          question.skill ||
+          question.knowledge_tree ||
+          question.category ||
+          "重新找出題目中的關鍵條件，再逐一排除不符合的選項。"
+        );
+      }
+
+      const parts = [
+        question.knowledge_tree,
+        question.category,
+        question.skill,
+      ].filter((value, index, array) => {
+        const text = String(value || "").trim();
+        return text && array.findIndex((item) => String(item || "").trim() === text) === index;
+      });
+
+      return parts.length > 0
+        ? `請把題目歸回「${parts.join("／")}」來判斷，並逐項核對選項。`
+        : "把題目中的人物、時間、地點、因果或數量條件分開整理，再重新比較四個選項。";
+    }
+
     function renderQuestion(data) {
       clearAnswerResult();
       lastSubmitResult = null;
@@ -932,9 +963,21 @@
         ? Number(data.total_questions || 1)
         : Number(data.total_questions || 15);
 
-      progressText.textContent = `第 ${currentOrder} / ${totalQuestions} 題`;
+      if (currentMode === "wrong_question") {
+        const nextAttemptNo = Number(
+          data?.rules?.next_attempt_no ??
+          question?.retry?.attempt_no ??
+          1
+        );
+
+        progressText.textContent = `第 ${nextAttemptNo} / 3 次作答`;
+        progressBar.style.width = `${Math.min(100, (nextAttemptNo / 3) * 100)}%`;
+      } else {
+        progressText.textContent = `第 ${currentOrder} / ${totalQuestions} 題`;
+        progressBar.style.width = `${Math.min(100, (currentOrder / totalQuestions) * 100)}%`;
+      }
+
       subjectText.textContent = question.subject || question.subject_code || "";
-      progressBar.style.width = `${Math.min(100, (currentOrder / totalQuestions) * 100)}%`;
       yearBadge.textContent = question.year ? `${question.year} 年` : "歷屆題";
       subjectBadge.textContent = question.subject || question.subject_code || "會考";
       difficultyBadge.textContent = question.difficulty
@@ -1017,16 +1060,25 @@
       currentData = result;
       selectedAnswer = null;
 
-      if (
+      const retryCompleted =
         result.retry_completed === true ||
         result.session_completed === true ||
-        result.mastered === true
-      ) {
+        result.mastered === true ||
+        result?.rules?.retry_completed === true ||
+        result?.session?.status === "completed";
+
+      if (retryCompleted) {
         showCompletedResult(result);
         return;
       }
 
       renderQuestion(result);
+
+      if (result?.rules?.show_hint === true) {
+        const restoredHint = buildRestoredHint(result);
+        showHint(restoredHint || result?.rules?.message || "");
+        submitButton.textContent = "看完提示後，請重新選擇答案";
+      }
     }
 
     // ============================================================
@@ -1165,28 +1217,66 @@
       quizArea.classList.add("hidden");
 
       if (currentMode === "wrong_question") {
-        const isCorrect = result.is_correct === true;
+        const session = result.session || {};
+        const isCorrect =
+          result.is_correct === true ||
+          Number(session.correct_count || 0) > 0;
+
         const correctionPoints = Number(
           result.points_earned ??
           result.correction_points ??
           result.earned_points ??
+          session.earned_points ??
           0
         );
 
-        completedQuestionCount.textContent = Number(
-          result.completed_question_count ?? 1
-        );
-        completedCorrectCount.textContent = Number(
-          result.correct_count ?? (isCorrect ? 1 : 0)
-        );
-        completedWrongCount.textContent = Number(
-          result.wrong_count ?? (isCorrect ? 0 : 1)
+        const wrongAttempts = Number(
+          result.session_wrong_count ??
+          session.wrong_count ??
+          (isCorrect ? 0 : result.attempt_no ?? 1)
         );
 
+        completedTitle.textContent = isCorrect
+          ? "這題訂正完成！"
+          : "這次重練已完成";
+
+        completedQuestionCount.textContent = 1;
+        completedCorrectCount.textContent = isCorrect ? 1 : 0;
+        completedWrongCount.textContent = wrongAttempts;
+
         // 錯題重練不修改每日練習的真實能力分。
-        // 此格改顯示本次訂正積分，並與獲得點數保持一致。
         completedScore.textContent = correctionPoints;
         completedPoints.textContent = correctionPoints;
+
+        const noteParts = [];
+
+        if (result.message) {
+          noteParts.push(String(result.message));
+        } else if (isCorrect) {
+          noteParts.push("本次訂正紀錄已保存，原本的每日練習成績不會被修改。");
+        } else {
+          noteParts.push("本次三次作答均未答對，請查看正確答案與解析。");
+        }
+
+        if (result.show_correct_answer === true && result.correct_answer) {
+          noteParts.push(`正確答案：${String(result.correct_answer).trim().toUpperCase()}`);
+        }
+
+        if (result.show_explanation === true && result.explanation) {
+          noteParts.push(`解析：${String(result.explanation).trim()}`);
+        }
+
+        if (result.mastery_status) {
+          const masteryMap = {
+            unresolved: "待訂正",
+            reviewing: "複習中",
+            mastered: "已掌握",
+          };
+          noteParts.push(`目前狀態：${masteryMap[result.mastery_status] || result.mastery_status}`);
+        }
+
+        completedNote.textContent = noteParts.join("\n\n");
+        completedNote.style.whiteSpace = "pre-wrap";
       } else {
         completedQuestionCount.textContent = Number(result.completed_question_count ?? 15);
         completedCorrectCount.textContent = Number(result.correct_count ?? 0);
@@ -1204,7 +1294,9 @@
           lastSubmitResult?.retry_completed === true ||
           lastSubmitResult?.session_completed === true ||
           lastSubmitResult?.mastered === true ||
-          lastSubmitResult?.is_correct === true
+          lastSubmitResult?.is_correct === true ||
+          lastSubmitResult?.rules?.retry_completed === true ||
+          lastSubmitResult?.session?.status === "completed"
         ) {
           showCompletedResult(lastSubmitResult);
           return;
@@ -1300,11 +1392,16 @@
           submitButton.classList.remove("answer-wrong");
           submitButton.classList.add("answer-correct");
         } else {
-          submitButton.textContent = currentMode === "wrong_question"
-            ? "❌ 還不正確｜點擊查看提示後重作"
-            : result.task_completed
+          if (currentMode === "wrong_question") {
+            submitButton.textContent = result.retry_completed === true
+              ? "❌ 第三次仍未答對｜查看答案與解析"
+              : `❌ 第 ${Number(result.attempt_no || 1)} 次未答對｜點擊查看提示後重作`;
+          } else {
+            submitButton.textContent = result.task_completed
               ? "❌ 答錯了，已加入錯題本｜查看今日結果"
               : "❌ 答錯了，已加入錯題本｜點擊進入下一題";
+          }
+
           submitButton.classList.remove("answer-correct");
           submitButton.classList.add("answer-wrong");
         }
