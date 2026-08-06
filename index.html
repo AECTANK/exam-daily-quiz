@@ -739,7 +739,11 @@
         hideHint();
         return;
       }
-      hintCard.textContent = `提示：${text}`;
+
+      hintCard.textContent = text.startsWith("提示")
+        ? text
+        : `提示：${text}`;
+
       hintCard.classList.remove("hidden");
     }
 
@@ -1310,6 +1314,17 @@
           "再檢查題目條件與各選項之間的關係，重新作答一次。";
 
         clearAnswerResult();
+
+        const nextAttemptNo = Math.min(
+          Number(lastSubmitResult?.attempt_no || 1) + 1,
+          3
+        );
+
+        progressText.textContent = `第 ${nextAttemptNo} / 3 次作答`;
+        progressBar.style.width = `${Math.min(100, (nextAttemptNo / 3) * 100)}%`;
+
+        questionLoadedAt = Date.now();
+
         showHint(hint);
         submitButton.textContent = "看完提示後，請重新選擇答案";
         return;
@@ -1382,6 +1397,19 @@
         const isCorrect = result.is_correct === true;
 
         markAnswerResult(submittedAnswer, isCorrect);
+
+        if (
+          currentMode === "wrong_question" &&
+          (
+            result.retry_completed === true ||
+            result.session_completed === true ||
+            result.mastered === true ||
+            result.is_correct === true
+          )
+        ) {
+          showCompletedResult(result);
+          return;
+        }
 
         if (isCorrect) {
           submitButton.textContent = currentMode === "wrong_question"
