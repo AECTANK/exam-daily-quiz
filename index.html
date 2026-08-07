@@ -660,7 +660,7 @@
       "sb_publishable_VtPQzTC8Cw-ccxC5bSzIuw_nHVbTO3Q";
 
     const LIFF_ID = "2010921992-NsV1lmUe";
-    const APP_VERSION = "2026-08-07-2124-extend-daily-task";
+    const APP_VERSION = "2026-08-07-2145-reset-challenge-button";
     let liffReady = false;
 
     // ============================================================
@@ -1366,6 +1366,14 @@
         completedWrongCount.textContent = Number(result.wrong_count ?? 0);
         completedScore.textContent = Number(result.score ?? 0);
         completedPoints.textContent = Number(result.earned_points ?? 0);
+
+        // 每完成目前這一輪題目後，恢復挑戰按鈕的正常狀態。
+        // 例如：
+        // 15 題完成 → 可再挑戰 5 題
+        // 20 題完成 → 可再挑戰 5 題
+        // 25 題完成 → 可再挑戰 5 題
+        extraPracticeButton.disabled = false;
+        extraPracticeButton.textContent = "再挑戰 5 題";
       }
 
       completedCard.classList.remove("hidden");
