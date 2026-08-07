@@ -529,7 +529,7 @@
           class="action-button action-secondary"
           type="button"
         >
-          AI 推薦再練 5 題
+          再挑戰 5 題
         </button>
 
         <button
@@ -646,6 +646,9 @@
     const SUBMIT_DAILY_ANSWER_URL =
       "https://xbitdnrjiqlosfkzegiz.supabase.co/functions/v1/submit-daily-answer";
 
+    const EXTEND_DAILY_TASK_URL =
+      "https://xbitdnrjiqlosfkzegiz.supabase.co/functions/v1/extend-daily-task";
+
     // 錯題重練模式使用的兩支 Edge Function。
     const GET_WRONG_QUESTION_RETRY_URL =
       "https://xbitdnrjiqlosfkzegiz.supabase.co/functions/v1/get-wrong-question-retry";
@@ -657,7 +660,7 @@
       "sb_publishable_VtPQzTC8Cw-ccxC5bSzIuw_nHVbTO3Q";
 
     const LIFF_ID = "2010921992-NsV1lmUe";
-    const APP_VERSION = "2026-08-06-2005-return-wrong-book";
+    const APP_VERSION = "2026-08-07-2124-extend-daily-task";
     let liffReady = false;
 
     // ============================================================
@@ -1281,6 +1284,16 @@
       );
     }
 
+    async function extendDailyTask(dailyTaskId) {
+      return await fetchJson(
+        EXTEND_DAILY_TASK_URL,
+        {
+          daily_task_id: dailyTaskId,
+        },
+        "新增挑戰題",
+      );
+    }
+
     function showCompletedResult(result) {
       loadingCard.classList.add("hidden");
       errorCard.classList.add("hidden");
@@ -1535,8 +1548,59 @@
       }
     });
 
-    extraPracticeButton.addEventListener("click", () => {
-      alert("「AI 推薦再練 5 題」將在下一階段接上 generated_practice，且不計入今日基礎分。");
+    extraPracticeButton.addEventListener("click", async () => {
+      if (currentMode !== "daily_task") {
+        return;
+      }
+
+      const dailyTaskId = String(
+        currentData?.daily_task_id ||
+        currentParams?.dailyTaskId ||
+        "",
+      ).trim();
+
+      if (!dailyTaskId) {
+        alert("找不到 daily_task_id，請回到 LINE 重新進入今天練習。");
+        return;
+      }
+
+      extraPracticeButton.disabled = true;
+      extraPracticeButton.textContent = "正在新增 5 題……";
+
+      try {
+        const result = await extendDailyTask(dailyTaskId);
+
+        const nextOrder = Number(result?.next_order || 0);
+        const totalQuestions = Number(result?.total_questions || 0);
+
+        if (!Number.isInteger(nextOrder) || nextOrder <= 0) {
+          throw new Error("後端沒有回傳有效的 next_order。");
+        }
+
+        if (!Number.isInteger(totalQuestions) || totalQuestions <= 0) {
+          throw new Error("後端沒有回傳有效的 total_questions。");
+        }
+
+        extraPracticeButton.textContent = `已新增！進入第 ${nextOrder} 題`;
+
+        // 延長的是同一個 daily_task：
+        // 15 → 20、20 → 25……，計分與每日練習完全相同。
+        currentParams.dailyTaskId = dailyTaskId;
+        currentParams.rawOrder = String(nextOrder);
+
+        await loadDailyTask(dailyTaskId, nextOrder);
+      } catch (error) {
+        console.error("再挑戰 5 題失敗：", error);
+
+        extraPracticeButton.disabled = false;
+        extraPracticeButton.textContent = "再挑戰 5 題";
+
+        alert([
+          "再挑戰 5 題失敗",
+          "",
+          error instanceof Error ? error.message : String(error),
+        ].join("\n"));
+      }
     });
 
     closePageButton.addEventListener("click", () => {
